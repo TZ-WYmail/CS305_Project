@@ -141,7 +141,6 @@ class VideoUpdateThread(QThread):
             try:
                 frame = await self.video_track.recv()
                 if frame:
-                    # 转换为numpy数组
                     img = frame.to_ndarray(format="rgb24")
                     self.frame_ready.emit(img)
                 await asyncio.sleep(1/30)  # 30fps
@@ -181,7 +180,7 @@ class WebRTCClient(QMainWindow):
         self.is_room_joined = False
         self.is_video_enabled = False
         self.is_audio_enabled = False
-        self.server_connected = False  # 添加服务器连接状态标志
+        self.server_connected = False  
         self.setup_ui()
         self.setup_socket_signals()
 
@@ -256,7 +255,7 @@ class WebRTCClient(QMainWindow):
                     return
                 
                 if not self.server_connected:
-                    self.socket_thread.connect_to_server('http://localhost:5000')
+                    self.socket_thread.connect_to_server('http://49.235.44.81:5000')
                     self.server_connected = True
                 
                 self.socket_thread.join_room(room)
@@ -350,7 +349,6 @@ class WebRTCClient(QMainWindow):
 
     def start_local_video(self):
         try:
-            # 使用 QThread 运行异步操作
             class AsyncHelper(QThread):
                 def __init__(self, coro):
                     super().__init__()
