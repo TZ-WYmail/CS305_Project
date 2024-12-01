@@ -7,10 +7,12 @@ from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from aiortc import (RTCPeerConnection, RTCSessionDescription, 
                    MediaStreamTrack, VideoStreamTrack, RTCIceCandidate,
-                   RTCConfiguration, RTCIceServer)  
+                   RTCConfiguration, RTCIceServer, AudioStreamTrack) 
 from aiortc.contrib.media import MediaPlayer, MediaRecorder
 from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.contrib.media import MediaRelay
+from aiortc.mediastreams import MediaStreamTrack, MediaStreamError
+import media_tracks
 import socketio
 import asyncio
 import sys
@@ -18,7 +20,6 @@ import os
 import av
 import cv2
 import numpy as np
-from aiortc.mediastreams import MediaStreamTrack
 import cv2
 import numpy as np
 import asyncio
@@ -108,12 +109,10 @@ class CameraStreamTrack(MediaStreamTrack):
     async def recv(self):
         if not self.running:
             raise MediaStreamError("Track has ended")
-            
         ret, frame = self.cap.read()
         if not ret:
             raise MediaStreamError("Failed to get frame from camera")
 
-        # 将OpenCV的BGR格式转换为RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # 创建VideoFrame
@@ -234,7 +233,7 @@ class WebRTCClient(QMainWindow):
         layout.addLayout(message_layout)
 
         # 更新按钮状态
-        self.video_button.setEnabled(False)  # 初始禁用媒体按钮
+        self.video_button.setEnabled(False)  
         self.audio_button.setEnabled(False)
         self.video_button.setText('开启视频')
         self.audio_button.setText('开启音频')
@@ -259,7 +258,7 @@ class WebRTCClient(QMainWindow):
                     self.server_connected = True
                 
                 self.socket_thread.join_room(room)
-                self.init_webrtc()  # 改名以避免混淆
+                self.init_webrtc()  
                 
                 self.is_room_joined = True
                 self.join_button.setText('已加入房间')
