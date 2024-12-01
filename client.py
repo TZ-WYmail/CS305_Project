@@ -284,18 +284,18 @@ class WebRTCClient(QMainWindow):
 
     def init_webrtc(self):
         try:
-            ice_servers = [RTCIceServer(urls=['stun:stun.l.google.com:19302'])]
+            ice_servers = [RTCIceServer(urls=['stun:relay.webwormhole.io:3478'])]
             config = RTCConfiguration(iceServers=ice_servers)
             self.pc = RTCPeerConnection(configuration=config)
-            
+            print(ice_servers)
             @self.pc.on('icecandidate')
             def on_ice_candidate(candidate):
+                print("收到 ICE candidate")
                 if candidate:
                     self.socket_thread.sio.emit('ice_candidate', {
                         'room': self.room_input.text(),
                         'candidate': candidate.to_dict()
                     })
-
             @self.pc.on('track')
             def on_track(track):
                 print(f"收到媒体轨道: {track.kind}")
@@ -308,7 +308,6 @@ class WebRTCClient(QMainWindow):
                     self.remote_audio = track
                     QMetaObject.invokeMethod(self, "start_remote_audio",
                                            Qt.QueuedConnection)
-
         except Exception as e:
             print(f"WebRTC初始化失败: {e}")
             raise e
@@ -318,9 +317,13 @@ class WebRTCClient(QMainWindow):
             if not self.is_video_enabled:
                 if not self.video_track:
                     self.video_track = CameraStreamTrack()
-                    #检查是否创建p2p并添加视频轨道
                     if self.pc:
-                        self.loop.run_until_complete(self.add_video_track())
+                        # 检查是否已存在视频发送器
+                        existing_senders = self.pc.getSenders()
+                        video_sender = next((sender for sender in existing_senders 
+                                           if sender.track and sender.track.kind == "video"), None)
+                        if not video_sender:
+                            self.loop.run_until_complete(self.add_video_track())
                 self.start_video_stream()
                 self.is_video_enabled = True
                 self.video_button.setText('关闭视频')
@@ -342,10 +345,14 @@ class WebRTCClient(QMainWindow):
                 if not self.audio_track:
                     self.audio_track = AudioStreamTrack()
                     if self.pc:
-                        self.loop.run_until_complete(self.add_audio_track())
+                        # 检查是否已存在音频发送器
+                        existing_senders = self.pc.getSenders()
+                        audio_sender = next((sender for sender in existing_senders 
+                                           if sender.track and sender.track.kind == "audio"), None)
+                        if not audio_sender:
+                            self.loop.run_until_complete(self.add_audio_track())
                 self.is_audio_enabled = True
                 self.audio_button.setText('关闭音频')
-                # 启动本地音频流
                 self.audio_track.enabled = True
                 print("音频已开启")
             else:
@@ -359,6 +366,7 @@ class WebRTCClient(QMainWindow):
 
     async def add_video_track(self):
         if self.video_track and self.pc:
+            print("添加视频轨道")
             self.pc.addTrack(self.video_track)
 
     async def add_audio_track(self):
@@ -441,53 +449,103 @@ class WebRTCClient(QMainWindow):
 
     def on_ready(self):
         print("Room is ready for WebRTC connection")
+        # 当房间准备就绪时，创建并发送 offer
+        asyncio.run_coroutine_threadsafe(self.create_offer(), self.loop)
+
+    async def create_offer(self):
+        try:
+            # 确保媒体轨道已设置
+            print(1)
+            await self.setup_media_tracks()
+            print(2)
+            # 创建并设置本地描述
+            offer = await self.pc.createOffer()
+            print(3)
+            await self.pc.setLocalDescription(offer)
+            # 发送 offer 给对方
+            print(4)
+            self.socket_thread.sio.emit('offer', {
+                'room': self.room_input.text(),
+                'sdp': self.pc.localDescription.sdp
+            })
+            print(5)
+        except Exception as e:
+            print(f"Create offer failed: {e}")
 
     async def on_offer(self, data):
+        print("Received offer")
         try:
-            await self.setup_media_tracks()
+            # 设置远程描述
             await self.pc.setRemoteDescription(
                 RTCSessionDescription(sdp=data['sdp'], type='offer')
             )
+            
+            # 确保本地媒体轨道已设置
+            await self.setup_media_tracks()
+            
+            # 创建并发送 answer
             answer = await self.pc.createAnswer()
             await self.pc.setLocalDescription(answer)
+            
             self.socket_thread.sio.emit('answer', {
                 'room': self.room_input.text(),
                 'sdp': self.pc.localDescription.sdp
             })
-            # 开始本地视频预览
-            if self.video_track:
-                self.start_video_stream()
-                pass
         except Exception as e:
-            print(f"处理offer失败: {e}")
+            print(f"处理 offer 失败: {e}")
 
     async def setup_media_tracks(self):
-        self.video_track = VideoStreamTrack()
-        self.pc.addTrack(self.video_track)
-        
-        self.audio_track = AudioStreamTrack()
-        self.pc.addTrack(self.audio_track)
-
-    async def on_track(self, track):
-        if track.kind == "video":
-            self.remote_video = track
-        elif track.kind == "audio":
-            self.remote_audio = track
-
-    async def create_offer(self):
-        await self.setup_media_tracks()
-        offer = await self.pc.createOffer()
-        await self.pc.setLocalDescription(offer)
-        self.socket_thread.sio.emit('offer', {
-            'room': self.room_input.text(),
-            'sdp': self.pc.localDescription.sdp
-        })
+        try:
+            # 检查是否已经添加了轨道
+            existing_senders = self.pc.getSenders()
+            existing_video = any(sender.track and sender.track.kind == "video" for sender in existing_senders)
+            existing_audio = any(sender.track and sender.track.kind == "audio" for sender in existing_senders)
+            
+            if not existing_video:
+                if not self.video_track:
+                    self.video_track = CameraStreamTrack()
+                if self.pc:
+                    self.pc.addTrack(self.video_track)
+            
+            if not existing_audio:
+                if not self.audio_track:
+                    self.audio_track = AudioStreamTrack()
+                if self.pc:
+                    self.pc.addTrack(self.audio_track)
+            
+            # 启动本地预览
+            if not existing_video:
+                self.start_video_stream()
+        except Exception as e:
+            print(f"Setup media tracks failed: {e}")
 
     def on_answer(self, data):
-        print("Received answer")
+        try:
+            # 在主事件循环中处理 answer
+            asyncio.run_coroutine_threadsafe(
+                self.pc.setRemoteDescription(
+                    RTCSessionDescription(sdp=data['sdp'], type='answer')
+                ),
+                self.loop
+            )
+            print("Answer processed successfully")
+        except Exception as e:
+            print(f"处理 answer 失败: {e}")
 
     def on_ice_candidate(self, data):
-        print("Received ICE candidate")
+        try:
+            candidate = RTCIceCandidate(
+                sdpMid=data['candidate']['sdpMid'],
+                sdpMLineIndex=data['candidate']['sdpMLineIndex'],
+                candidate=data['candidate']['candidate']
+            )
+            # 在主事件循环中添加 ICE candidate
+            asyncio.run_coroutine_threadsafe(
+                self.pc.addIceCandidate(candidate),
+                self.loop
+            )
+        except Exception as e:
+            print(f"处理 ICE candidate 失败: {e}")
 
     def handle_ice_candidate(self, candidate_dict):
         self.socket_thread.sio.emit('ice_candidate', {
