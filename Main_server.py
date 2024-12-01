@@ -116,21 +116,17 @@ class MainServer:
                 print(recv_data.decode())
                 msg = recv_data.decode().split(':')
                 is_connected = msg[0]
-                is_command = msg[1]
-                conference_id = msg[2]
-                is_conference_running = msg[3]
-                is_video = msg[4]
-                is_audio = msg[5]
-                datatype = msg[6]
-                data = msg[7]
+                conference_id = msg[1]
+                is_conference_running = msg[2]
+                is_command = msg[3]
+                datatype = msg[4]
+                data = msg[5]
 
                 # 打印收到的全部信息
                 print(f"Is Connected: {is_connected}")
-                print(f"Is Command: {is_command}")
                 print(f"Conference ID: {conference_id}")
                 print(f"Is Conference Running: {is_conference_running}")
-                print(f"Is Video: {is_video}")
-                print(f"Is Audio: {is_audio}")
+                print(f"Is Command: {is_command}")
                 print(f"Data Type: {datatype}")
                 if data is not None:
                     print(f"Data: {data}")

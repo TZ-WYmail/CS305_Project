@@ -22,15 +22,26 @@ class ConferenceClient:
         self.datatype = None  # 数据类型，如 text, audio, video, etc.
         self.data = None
 
+        self.Main_commands = {
+            'check',
+            'help',
+            'create',
+            'quit',
+            'list',
+            'join'
+        }
+        self.Con_commands = {
+            'check',
+            'help',
+            'quit',
+            'list',
+        }
+
     #将用户属性形成报文头部
-    def make_Main_message(self):
-        message = f"{self.is_connected}:{self.is_command}:{self.conference_id}:{self.is_conference_running}:{self.is_video}:{self.is_audio}:{self.datatype}:{self.data}"
+    def make_message(self):
+        message = f"{self.is_connected}:{self.conference_id}:{self.is_conference_running}:{self.is_command}:{self.datatype}:{self.data}"
         return message
 
-    #传递给会议服务器的报文（以data为主）：iscommand+datatype+data
-    def make_Conference_message(self):
-        message = f"{self.is_command}:{self.datatype}:{self.data}"
-        return message
 
     def connect_to_server(self):
         print('Connecting to server')
@@ -77,48 +88,31 @@ class ConferenceClient:
                 break
 
     def send_command_to_Mainserver(self, command):
-        if command == 'exit':
-            self.data = command
+        self.datatype = 'text'
+        cmd = command.split(" ")
+        if cmd[0] in self.Main_commands:
             self.is_command = True
-        if command.lower() == 'check':
-            self.print_attributes()
             self.data = command
-            self.is_command = False
-            return
-        elif command == 'help':
-            print("Available commands: check, create, join, quit, start, stop, share, receive, help")
-            self.data = command
-            self.is_command = True
-
-        elif command == 'create':
             self.datatype = 'text'
-            self.data = command
-            self.is_command = True
-
-        elif command.startswith('join'):
-            cmd, conference_id = command.split(' ')
-            self.datatype = 'text'
-            self.conference_id = conference_id
-            self.data = cmd
-            self.is_command = True
-
-        elif command == 'quit':
-            self.datatype = 'text'
-            self.data = command
-            self.is_command = True
-
-        elif command == 'list':
-            self.datatype = 'text'
-            self.data = command
-            self.is_command = True
 
         else:
             self.datatype = 'text'
             self.data = command
             self.is_command = False
 
-        self.datatype = 'text'
-        message = self.make_Main_message()
+        #特殊处理：
+
+        if cmd[0].lower() == 'check':
+            self.print_attributes()
+            return
+
+        elif cmd[0].startswith('join'):
+            cmd, conference_id = command.split(' ')
+            self.datatype = 'text'
+            self.conference_id = conference_id
+            self.data = cmd
+
+        message = self.make_message()
         print(message)
         if self.is_connected and self.conns:
             try:
@@ -175,26 +169,22 @@ class ConferenceClient:
                 conference_list = data.decode().split(':')[2:]
                 print(conference_list)
 
-
     def send_command_to_conference(self, command):
-        if command.lower() == 'check':
-            self.print_attributes()
-            self.data = command
-            self.is_command = False
-            return
-        elif command.lower() == 'help':
-            self.data = command
-            self.is_command = True
-        elif command.lower() == 'quit':
-            self.data = command
-            self.is_command = True
-        elif command.lower() == 'list':
+        if command in self.Con_commands:
+            self.datatype = 'text'
             self.data = command
             self.is_command = True
         else:
+            self.datatype = None
             self.data = command
             self.is_command = False
-        message = self.make_Conference_message()
+
+        # 特殊处理：
+        if command.lower() == 'check':
+            self.print_attributes()
+            return
+
+        message = self.make_message()
         if self.is_conference_running and self.con_conns:
             try:
                 self.con_conns.sendall(message.encode())

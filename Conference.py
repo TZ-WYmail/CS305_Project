@@ -14,14 +14,12 @@ class Conference:
         self.server_socket.listen(5)
         print(f"[*] Conference {conference_id} listening on port {port}")
 
-
     def remove_client(self, client):
         """Remove a client from the conference."""
         if client in self.clients:
             self.clients.remove(client)
             client.close()
             print("[*] Client disconnected from conference")
-
 
     def handle_client(self, client_socket):
         """Handle incoming messages from a client."""
@@ -36,13 +34,25 @@ class Conference:
             #打印对应的信息，from：message
             print(f"[*] Received message from {client_socket}: {message}")
 
-
     #业务逻辑处理
     def handle_message(self, client_socket, message):
-        msg = message.split(':')
-        is_command = msg[0]
-        datatype = msg[1]
-        data = msg[2]
+        # 接收客户端发送的数据
+        is_connected = message[0]
+        conference_id = message[1]
+        is_conference_running = message[2]
+        is_command = message[3]
+        datatype = message[4]
+        data = message[5]
+
+        # 打印收到的全部信息
+        print(f"Is Connected: {is_connected}")
+        print(f"Is Command: {is_command}")
+        print(f"Conference ID: {conference_id}")
+        print(f"Is Conference Running: {is_conference_running}")
+        print(f"Data Type: {datatype}")
+
+        if data is not None:
+            print(f"Data: {data}")
         if is_command:
             if data == 'quit':
                 self.quit(client_socket)
