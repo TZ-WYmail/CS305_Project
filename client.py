@@ -76,12 +76,16 @@ class SocketThread(QThread):
         self.sio.emit('message', data)
 
 class VideoWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, title="", parent=None):
         super().__init__(parent)
-        self.image_label = QLabel()
         layout = QVBoxLayout()
+        self.title_label = QLabel(title)
+        self.image_label = QLabel()
+        layout.addWidget(self.title_label)
         layout.addWidget(self.image_label)
         self.setLayout(layout)
+        # 设置最小尺寸以保证视频显示区域合适
+        self.setMinimumSize(320, 240)
 
     def update_frame(self, frame):
         height, width = frame.shape[:2]
@@ -180,6 +184,7 @@ class WebRTCClient(QMainWindow):
         self.is_video_enabled = False
         self.is_audio_enabled = False
         self.server_connected = False  
+        self.remote_audio_player = QMediaPlayer()
         self.setup_ui()
         self.setup_socket_signals()
 
@@ -190,8 +195,8 @@ class WebRTCClient(QMainWindow):
         
         # 视频区域
         video_layout = QHBoxLayout()
-        self.local_video_widget = VideoWidget()
-        self.remote_video_widget = VideoWidget()
+        self.local_video_widget = VideoWidget("本地视频")
+        self.remote_video_widget = VideoWidget("远程视频")
         video_layout.addWidget(self.local_video_widget)
         video_layout.addWidget(self.remote_video_widget)
         
@@ -237,6 +242,10 @@ class WebRTCClient(QMainWindow):
         self.audio_button.setEnabled(False)
         self.video_button.setText('开启视频')
         self.audio_button.setText('开启音频')
+
+        # 添加远程音频播放
+        self.remote_audio_player.setMedia(QMediaContent())
+        self.remote_audio_player.setVolume(100)
 
     def setup_socket_signals(self):
         self.socket_thread.message_received.connect(self.on_message)
@@ -291,9 +300,13 @@ class WebRTCClient(QMainWindow):
                 print(f"收到媒体轨道: {track.kind}")
                 if track.kind == "video":
                     self.remote_video = track
-                    self.start_remote_video()
+                    # 使用 QMetaObject.invokeMethod 确保在主线程中更新UI
+                    QMetaObject.invokeMethod(self, "start_remote_video",
+                                           Qt.QueuedConnection)
                 elif track.kind == "audio":
                     self.remote_audio = track
+                    QMetaObject.invokeMethod(self, "start_remote_audio",
+                                           Qt.QueuedConnection)
 
         except Exception as e:
             print(f"WebRTC初始化失败: {e}")
@@ -330,11 +343,15 @@ class WebRTCClient(QMainWindow):
                         self.loop.run_until_complete(self.add_audio_track())
                 self.is_audio_enabled = True
                 self.audio_button.setText('关闭音频')
+                # 启动本地音频流
+                self.audio_track.enabled = True
+                print("音频已开启")
             else:
                 if self.audio_track:
                     self.audio_track.enabled = False
                 self.is_audio_enabled = False
                 self.audio_button.setText('开启音频')
+                print("音频已关闭")
         except Exception as e:
             print(f"音频切换失败: {e}")
 
@@ -377,8 +394,23 @@ class WebRTCClient(QMainWindow):
     def start_remote_video(self):
         if self.remote_video and not self.remote_video_thread:
             self.remote_video_thread = VideoUpdateThread(self.remote_video)
-            self.remote_video_thread.frame_ready.connect(self.update_remote_frame)
+            self.remote_video_thread.frame_ready.connect(
+                self.update_remote_frame,
+                type=Qt.QueuedConnection
+            )
             self.remote_video_thread.start()
+            print("远程视频流已启动")
+
+    def start_remote_audio(self):
+        if self.remote_audio:
+            try:
+                # 创建新的音频播放实例
+                self.remote_audio_player = QMediaPlayer()
+                self.remote_audio_player.setVolume(100)
+                self.remote_audio_player.play()
+                print("远程音频流已启动")
+            except Exception as e:
+                print(f"启动远程音频失败: {e}")
 
     def start_video_stream(self):
         if not self.video_thread and self.video_track:
@@ -410,16 +442,22 @@ class WebRTCClient(QMainWindow):
         print("Room is ready for WebRTC connection")
 
     async def on_offer(self, data):
-        await self.setup_media_tracks()
-        await self.pc.setRemoteDescription(
-            RTCSessionDescription(sdp=data['sdp'], type='offer')
-        )
-        answer = await self.pc.createAnswer()
-        await self.pc.setLocalDescription(answer)
-        self.socket_thread.sio.emit('answer', {
-            'room': self.room_input.text(),
-            'sdp': self.pc.localDescription.sdp
-        })
+        try:
+            await self.setup_media_tracks()
+            await self.pc.setRemoteDescription(
+                RTCSessionDescription(sdp=data['sdp'], type='offer')
+            )
+            answer = await self.pc.createAnswer()
+            await self.pc.setLocalDescription(answer)
+            self.socket_thread.sio.emit('answer', {
+                'room': self.room_input.text(),
+                'sdp': self.pc.localDescription.sdp
+            })
+            # 开始本地视频预览
+            if self.video_track:
+                self.start_video_stream()
+        except Exception as e:
+            print(f"处理offer失败: {e}")
 
     async def setup_media_tracks(self):
         self.video_track = VideoStreamTrack()
@@ -456,10 +494,16 @@ class WebRTCClient(QMainWindow):
         })
 
     def update_video_frame(self, frame):
-        self.local_video_widget.update_frame(frame)
+        try:
+            self.local_video_widget.update_frame(frame)
+        except Exception as e:
+            print(f"更新本地视频帧失败: {e}")
 
     def update_remote_frame(self, frame):
-        self.remote_video_widget.update_frame(frame)
+        try:
+            self.remote_video_widget.update_frame(frame)
+        except Exception as e:
+            print(f"更新远程视频帧失败: {e}")
 
     def closeEvent(self, event):
         if self.video_track:
@@ -471,6 +515,8 @@ class WebRTCClient(QMainWindow):
             self.remote_video_thread.wait()
         if self.pc:
             self.loop.run_until_complete(self.pc.close())
+        if self.remote_audio_player:
+            self.remote_audio_player.stop()
         self.loop.close()
         super().closeEvent(event)
 
