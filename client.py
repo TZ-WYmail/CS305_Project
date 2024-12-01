@@ -39,14 +39,14 @@ class SocketThread(QThread):
         super().__init__()
         self.sio = socketio.Client()
         self.setup_events()
-        
+    #处理接受的消息
     def setup_events(self):
         self.sio.on('message', self._on_message)
         self.sio.on('ready', self._on_ready)
         self.sio.on('offer', self._on_offer)
         self.sio.on('answer', self._on_answer)
         self.sio.on('ice_candidate', self._on_ice_candidate)
-
+    #接受消息后将其emit给前端槽函数
     def _on_message(self, data):
         self.message_received.emit(data)
 
@@ -100,6 +100,7 @@ class CameraStreamTrack(MediaStreamTrack):
     def __init__(self):
         super().__init__()
         self.cap = cv2.VideoCapture(0)
+        print(self.cap)
         if not self.cap.isOpened():
             raise RuntimeError("无法打开摄像头")
         
@@ -311,12 +312,13 @@ class WebRTCClient(QMainWindow):
         except Exception as e:
             print(f"WebRTC初始化失败: {e}")
             raise e
-        
+    #点击开启视频绑定的事件
     def toggle_video(self):
         try:
             if not self.is_video_enabled:
                 if not self.video_track:
                     self.video_track = CameraStreamTrack()
+                    #检查是否创建p2p并添加视频轨道
                     if self.pc:
                         self.loop.run_until_complete(self.add_video_track())
                 self.start_video_stream()
@@ -390,7 +392,6 @@ class WebRTCClient(QMainWindow):
         except Exception as e:
             print(f"Error starting local video: {e}")
             raise e
-
     def start_remote_video(self):
         if self.remote_video and not self.remote_video_thread:
             self.remote_video_thread = VideoUpdateThread(self.remote_video)
@@ -456,6 +457,7 @@ class WebRTCClient(QMainWindow):
             # 开始本地视频预览
             if self.video_track:
                 self.start_video_stream()
+                pass
         except Exception as e:
             print(f"处理offer失败: {e}")
 
