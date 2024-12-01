@@ -37,12 +37,13 @@ class Conference:
     #业务逻辑处理
     def handle_message(self, client_socket, message):
         # 接收客户端发送的数据
-        is_connected = message[0]
-        conference_id = message[1]
-        is_conference_running = message[2]
-        is_command = message[3]
-        datatype = message[4]
-        data = message[5]
+        msg = message.split(':')
+        is_connected = msg[0]
+        conference_id = msg[1]
+        is_conference_running = msg[2]
+        is_command = msg[3]
+        datatype = msg[4]
+        data = msg[5]
 
         # 打印收到的全部信息
         print(f"Is Connected: {is_connected}")
