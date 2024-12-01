@@ -1,4 +1,3 @@
-import asyncio
 import threading
 import socket
 import random
@@ -93,7 +92,7 @@ class MainServer:
     #处理用户帮助逻辑
     def help_command(self, client_socket):
         """处理帮助命令"""
-        client_socket.send(('help:'+config.HELP).encode())
+        client_socket.send(('help:' + config.HELP).encode())
 
     #移除某个聊天室
     def cancel_conference(self, client_socket, conference_id):
