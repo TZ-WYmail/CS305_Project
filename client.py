@@ -94,6 +94,23 @@ class VideoWidget(QWidget):
         pixmap = QPixmap.fromImage(q_img)
         self.image_label.setPixmap(pixmap.scaled(320, 240, Qt.KeepAspectRatio))
 
+class PCStateMonitorThread(QThread):
+    def __init__(self, pc):
+        super().__init__()
+        self.pc = pc
+        self.running = True
+
+    def run(self):
+        while self.running:
+            print(f"PeerConnection状态: {self.pc.connectionState}")
+            print(f"ICE收集状态: {self.pc.iceGatheringState}")
+            print(f"ICE连接状态: {self.pc.iceConnectionState}")
+            print(f"信令状态: {self.pc.signalingState}")
+            print("-" * 50)
+            time.sleep(1)  # 每秒更新一次
+
+    def stop(self):
+        self.running = False
 class CameraStreamTrack(MediaStreamTrack):
     kind = "video"
     
@@ -264,12 +281,11 @@ class WebRTCClient(QMainWindow):
                     return
                 
                 if not self.server_connected:
-                    self.socket_thread.connect_to_server('http://49.235.44.81:5000')
+                    self.socket_thread.connect_to_server('http://localhost:5000')
                     self.server_connected = True
                 
                 self.socket_thread.join_room(room)
                 self.init_webrtc()  
-                
                 self.is_room_joined = True
                 self.join_button.setText('已加入房间')
                 self.join_button.setEnabled(False)
@@ -284,10 +300,15 @@ class WebRTCClient(QMainWindow):
 
     def init_webrtc(self):
         try:
-            ice_servers = [RTCIceServer(urls=['stun:relay.webwormhole.io:3478'])]
-            config = RTCConfiguration(iceServers=ice_servers)
-            self.pc = RTCPeerConnection(configuration=config)
-            print(ice_servers)
+            ice_configuration = RTCConfiguration([
+                RTCIceServer(
+                    urls=['stun:stun.miwifi.com:3478']
+                )
+            ])
+            # 创建 PeerConnection 时使用此配置
+            self.pc = RTCPeerConnection(configuration=ice_configuration)
+            
+            # 调用setLocalDescription()后的ice收集过程中触发
             @self.pc.on('icecandidate')
             def on_ice_candidate(candidate):
                 print("收到 ICE candidate")
@@ -296,6 +317,7 @@ class WebRTCClient(QMainWindow):
                         'room': self.room_input.text(),
                         'candidate': candidate.to_dict()
                     })
+            # 对方调用addTrack()或setRemoteDescription()时触发
             @self.pc.on('track')
             def on_track(track):
                 print(f"收到媒体轨道: {track.kind}")
@@ -452,23 +474,20 @@ class WebRTCClient(QMainWindow):
         # 当房间准备就绪时，创建并发送 offer
         asyncio.run_coroutine_threadsafe(self.create_offer(), self.loop)
 
+
     async def create_offer(self):
         try:
-            # 确保媒体轨道已设置
-            print(1)
+
             await self.setup_media_tracks()
-            print(2)
-            # 创建并设置本地描述
             offer = await self.pc.createOffer()
-            print(3)
+            # print(offer.sdp)
             await self.pc.setLocalDescription(offer)
-            # 发送 offer 给对方
-            print(4)
+            
+            print(11111)
             self.socket_thread.sio.emit('offer', {
                 'room': self.room_input.text(),
                 'sdp': self.pc.localDescription.sdp
             })
-            print(5)
         except Exception as e:
             print(f"Create offer failed: {e}")
 
