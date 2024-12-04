@@ -1,3 +1,4 @@
+import threading
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QPushButton, QLineEdit, QTextEdit,
                             QLabel)
@@ -12,7 +13,6 @@ from aiortc.contrib.media import MediaPlayer, MediaRecorder
 from aiortc.rtcrtpsender import RTCRtpSender
 from aiortc.contrib.media import MediaRelay
 from aiortc.mediastreams import MediaStreamTrack, MediaStreamError
-import media_tracks
 import socketio
 import asyncio
 import sys
@@ -190,21 +190,31 @@ class WebRTCClient(QMainWindow):
         self.pc = None
         self.local_video = None
         self.remote_video = None
-        self.video_track = None
+        self.video_track = None 
         self.audio_track = None
         self.video_thread = None
         self.remote_video_thread = None
         self.media_relay = MediaRelay()
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        # 添加状态标志
         self.is_room_joined = False
         self.is_video_enabled = False
         self.is_audio_enabled = False
-        self.server_connected = False  
+        self.server_connected = False
         self.remote_audio_player = QMediaPlayer()
+        
+        # 创建事件循环
+        self.loop = asyncio.new_event_loop()
+        
+        # 创建并启动事件循环线程
+        self.loop_thread = threading.Thread(target=self._run_event_loop, daemon=True)
+        self.loop_thread.start()
+        
         self.setup_ui()
         self.setup_socket_signals()
+
+    def _run_event_loop(self):
+        """在独立线程中运行事件循环"""
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
 
     def setup_ui(self):
         central_widget = QWidget()
@@ -302,7 +312,7 @@ class WebRTCClient(QMainWindow):
         try:
             ice_configuration = RTCConfiguration([
                 RTCIceServer(
-                    urls=['stun:stun.miwifi.com:3478']
+                    urls=['stun:49.235.44.81:3478']
                 )
             ])
             # 创建 PeerConnection 时使用此配置
@@ -317,7 +327,7 @@ class WebRTCClient(QMainWindow):
                         'room': self.room_input.text(),
                         'candidate': candidate.to_dict()
                     })
-            # 对方调用addTrack()或setRemoteDescription()时触发
+
             @self.pc.on('track')
             def on_track(track):
                 print(f"收到媒体轨道: {track.kind}")
@@ -480,10 +490,8 @@ class WebRTCClient(QMainWindow):
 
             await self.setup_media_tracks()
             offer = await self.pc.createOffer()
-            # print(offer.sdp)
             await self.pc.setLocalDescription(offer)
-            
-            print(11111)
+            print(111)
             self.socket_thread.sio.emit('offer', {
                 'room': self.room_input.text(),
                 'sdp': self.pc.localDescription.sdp
