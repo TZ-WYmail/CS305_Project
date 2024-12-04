@@ -37,33 +37,33 @@ class client:
 
     #处理错误消息
     def on_error_message(self, data):
-        print(f"错误: {data['message']}")
+        print(f"错误:{data['timestamp']}: {data['message']}")
 
     #处理command信息
     def on_command(self, data):
         command = data['command']
         if command == 'help':
-            print(f"帮助信息: {data['message']}")
+            print(f"{data['timestamp']}:帮助信息: {data['message']}")
         elif command == 'create':
-            print(f"创建成功: {data['room_id']}")
+            print(f"{data['timestamp']}:创建成功: {data['room_id']}")
             self.is_in_room = True
             self.room_id = data['room_id']
         elif command == 'join':
-            print(f"加入成功: {data['room_id']}")
+            print(f"{data['timestamp']}:加入成功:{data['room_id']}")
             self.is_in_room = True
             self.room_id = data['room_id']
         elif command == 'quit':
-            print(f"退出成功: {data['room_id']}")
+            print(f"{data['timestamp']}:退出成功 {data['room_id']}")
             self.is_in_room = False
             self.room_id = None
         elif command == 'list':
-            print(f"房间列表: {data['message']}")
+            print(f"{data['timestamp']}:房间列表: {data['message']}")
         else:
-            print(f"未知命令: {command}")
+            print(f"{data['timestamp']}:未知命令:{command}")
 
     #处理聊天信息
     def on_chat_message(self, data):
-        print(f"{data['user']}: {data['message']}")
+        print(f"{data['timestamp']}:{data['user']}: {data['message']}")
 
     #处理视频信息
     def on_video_message(self, data):
@@ -97,12 +97,12 @@ class client:
         self.main_sio.connect('http://localhost:5000')
         threading.Thread(target=self.main_sio.wait, daemon=True).start()
 
-        try:
-            while True:
-                message = input("请输入消息: ")
-                self.handle_input(message)
-        finally:
-            self.main_sio.disconnect()
+        # try:
+        #     while True:
+        #         message = input("请输入消息: ")
+        #         self.handle_input(message)
+        # finally:
+        #     self.main_sio.disconnect()
 
 
 if __name__ == '__main__':

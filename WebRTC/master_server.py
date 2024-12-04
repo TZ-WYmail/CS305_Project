@@ -39,6 +39,11 @@ class Master_Server:
             room_id = str(random.randint(100000000, 999999999))
         return room_id
 
+    #获取当前时间作为时间戳
+    def get_timestamp(self):
+        import time
+        return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
     #注册
     def handle_connect(self, sid, environ):
         print(f"用户 {sid} 已连接")
@@ -52,7 +57,8 @@ class Master_Server:
                 for user in self.rooms[room_id]['users'][:]:
                     self.sio.leave_room(user, room_id)
                     for user in self.rooms[room_id]['users']:
-                        self.sio.emit('chat_message', {'user': user, 'message': user + ' 取消了会议'},
+                        self.sio.emit('chat_message', {'user': user, 'timestamp': self.get_timestamp(),
+                                                       'message': user + ' 取消了会议'},
                                       room=user)
                     self.sio.emit('command_message', {'user': user, 'command': 'quit', 'room_id': room_id}, room=user)
                 del self.rooms[room_id]  # 删除房间
@@ -63,13 +69,15 @@ class Master_Server:
                     self.sio.leave_room(sid, room_id)
                     for user in self.rooms[room_id]['users']:
                         if user != sid:
-                            self.sio.emit('chat_message', {'user': user, 'message': user + ' 断开了连接'}, room=user)
+                            self.sio.emit('chat_message', {'user': user, 'timestamp': self.get_timestamp(),
+                                                           'message': user + ' 断开了连接'}, room=user)
 
     #服务器交互事件实现
     #文本消息处理
     def handle_connect_message(self, sid, data):
         print(f"用户 {sid} 发送消息: {data['message']}")
-        self.sio.emit('connect_message', {'user': sid, 'message': data['message']}, room=sid)
+        self.sio.emit('connect_message', {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
+                      room=sid)
 
     #命令消息处理
     def handle_command_message(self, sid, data):
@@ -79,21 +87,32 @@ class Master_Server:
         if command == 'create':
             room_id = self.generate_room_id()
             if room_id in self.rooms:
-                self.sio.emit('error_message', {'user': sid, 'message': '房间已存在'}, room=room_id)
+                self.sio.emit('error_message',
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间已存在'}, room=room_id)
             else:
                 self.rooms[room_id] = {'host': sid, 'users': [sid]}
                 #将用户的id作为添加到房间中
                 self.sio.enter_room(sid, room_id)
-                self.sio.emit('command_message', {'user': sid, 'command': 'create', 'room_id': room_id}, room=room_id)
+                self.sio.emit('command_message',
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'create', 'room_id': room_id},
+                              room=room_id)
 
         elif command == 'join':
             room_id = data['room_id']
             if room_id in self.rooms:
                 self.rooms[room_id]['users'].append(sid)
                 self.sio.enter_room(sid, room_id)
-                self.sio.emit('command_message', {'user': sid, 'command': 'join', 'room_id': room_id})
+                self.sio.emit('command_message',
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'join', 'room_id': room_id})
+                #告知该房间的其他用户，这个用户加入了房间
+                for user in self.rooms[room_id]['users']:
+                    if user != sid:
+                        self.sio.emit('chat_message',
+                                      {'user': user, 'timestamp': self.get_timestamp(), 'message': user + '加入了房间'},
+                                      room=user)
             else:
-                self.sio.emit('error_message', {'user': sid, 'message': '房间不存在'}, room=sid)
+                self.sio.emit('error_message',
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
 
         elif command == 'quit':
             room_id = data['room_id']
@@ -104,47 +123,61 @@ class Master_Server:
                         self.sio.leave_room(user, room_id)
                         # 告诉房间内的其他人退出消息
                         for user in self.rooms[room_id]['users']:
-                            self.sio.emit('chat_message', {'user': user, 'message': user + ' 取消了会议'},
+                            self.sio.emit('chat_message', {'user': user, 'timestamp': self.get_timestamp(),
+                                                           'message': user + ' 取消了会议'},
                                           room=user)
-                        self.sio.emit('command_message', {'user': user, 'command': 'quit', 'room_id': room_id},
+                        self.sio.emit('command_message',
+                                      {'user': user, 'timestamp': self.get_timestamp(), 'command': 'quit',
+                                       'room_id': room_id},
                                       room=user)
                     del self.rooms[room_id]
                 else:
                     self.rooms[room_id]['users'].remove(sid)
                     self.sio.leave_room(sid, room_id)
-                self.sio.emit('command_message', {'user': sid, 'command': 'quit', 'room_id': room_id}, room=sid)
+                self.sio.emit('command_message',
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'quit', 'room_id': room_id},
+                              room=sid)
                 #告诉房间内的其他人退出消息
                 for user in self.rooms[room_id]['users']:
                     if user != sid:
-                        self.sio.emit('chat_message', {'user': user, 'message': user + ' 离开了房间'}, room=user)
+                        self.sio.emit('chat_message', {'user': user, 'timestamp': self.get_timestamp(),
+                                                       'message': user + ' 离开了房间'}, room=user)
             else:
-                self.sio.emit('error_message', {'user': sid, 'message': '房间不存在'}, room=sid)
+                self.sio.emit('error_message',
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
 
         elif command == 'list':  #返回给查询的那个用户
             room_list = list(self.rooms.keys())
-            self.sio.emit('command_message', {'user': sid, 'command': 'list', 'message': room_list}, room=sid)
+            self.sio.emit('command_message',
+                          {'user': sid, 'command': 'list', 'timestamp': self.get_timestamp(), 'message': room_list},
+                          room=sid)
 
         elif command == 'help':
             help_message = '可用命令:\n'
             for cmd, desc in self.commands.items():
                 help_message += f'{cmd}: {desc}\n'
-            self.sio.emit('command_message', {'user': sid, 'command': 'help', 'message': help_message}, room=sid)
+            self.sio.emit('command_message',
+                          {'user': sid, 'command': 'help', 'timestamp': self.get_timestamp(), 'message': help_message},
+                          room=sid)
 
     #聊天事件实现
     def handle_chat_message(self, sid, data):
         print(f"用户 {sid} 发送消息: {data['message']}")
         # 广播消息给所在房间的全体用户
-        self.sio.emit('chat_message', {'user': sid, 'message': data['message']}, room=data['room_id'])
+        self.sio.emit('chat_message', {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
+                      room=data['room_id'])
 
     def handle_video_message(self, sid, data):
         print(f"用户 {sid} 发送视频: {data['message']}")
         # 广播消息给所有用户
-        self.sio.emit('video_message', {'user': sid, 'message': data['message']}, room=data['room_id'])
+        self.sio.emit('video_message', {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
+                      room=data['room_id'])
 
     def handle_audio_message(self, sid, data):
         print(f"用户 {sid} 发送音频: {data['message']}")
         # 广播消息给所有用户
-        self.sio.emit('audio_message', {'user': sid, 'message': data['message']}, room=data['room_id'])
+        self.sio.emit('audio_message', {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
+                      room=data['room_id'])
 
     def run(self, host='0.0.0.0', port=5000):
         import eventlet
