@@ -106,10 +106,9 @@ class Master_Server:
                               {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'join', 'room_id': room_id})
                 #告知该房间的其他用户，这个用户加入了房间
                 for user in self.rooms[room_id]['users']:
-                    if user != sid:
-                        self.sio.emit('chat_message',
-                                      {'user': user, 'timestamp': self.get_timestamp(), 'message': user + '加入了房间'},
-                                      room=user)
+                    self.sio.emit('system_notification',
+                                  {'user': user, 'timestamp': self.get_timestamp(),'command':'list', 'message': user + '加入了房间','members': self.rooms[room_id]['users']},
+                                  room=user)
             else:
                 self.sio.emit('error_message',
                               {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)

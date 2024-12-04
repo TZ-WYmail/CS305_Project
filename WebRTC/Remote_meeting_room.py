@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
 import threading
 
-from PyQt5.QtCore import QRect, Qt, QCoreApplication, QMetaObject, QSize
+from PyQt5.QtCore import QRect, Qt, QCoreApplication, QMetaObject, QSize, pyqtSignal, QObject
 from PyQt5.QtGui import QFont, QCursor, QPalette, QColor, QBrush, QIcon
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QSizePolicy, QDialog
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QSizePolicy, QDialog, QMainWindow
 from WebRTC.JoinMeeting import JoinMeetingDialog
-
-
+from WebRTC.ListWindow import ListWindow
 
 
 class Ui_Remote_meeting_room(object):
 
+
+
     def setupUi(self, Remote_meeting_room, MainWindow):
         self.MainWindow = MainWindow
         self.client = MainWindow.client
+        self.client.Ui_Remote_meeting_room = Remote_meeting_room
         if not Remote_meeting_room.objectName():
             Remote_meeting_room.setObjectName(u"Remote_meeting_room")
         Remote_meeting_room.setWindowModality(Qt.WindowModal)
@@ -210,7 +212,6 @@ class Ui_Remote_meeting_room(object):
 
         QMetaObject.connectSlotsByName(Remote_meeting_room)
 
-
         #配置按钮
         self.set_button()
 
@@ -238,7 +239,22 @@ class Ui_Remote_meeting_room(object):
 
     def on_list_button_clicked(self):
         print("列表按钮被点击")
-        self.client.handle_input('list')
+        self.client.handle_input('list')  # 发送获取房间列表的命令
+        while not self.client.refresh_room:
+            continue
+        self.client.refresh_room = False
+        print('client.room_list', self.client.room_list)
+        # 检查房间列表是否为空，如果不为空，则显示 ListWindow
+        if self.client.room_list:
+            listWindow = ListWindow(self.client.room_list)
+            listWindow.room_list = self.client.room_list
+            print('listWindow.room_list',listWindow.room_list)
+            response = listWindow.exec_()  # 显示对话框并等待用户关闭它
+            if response == QDialog.Accepted:
+                # 如果用户点击了确定或关闭了对话框，可以在这里添加后续逻辑
+                pass
+        else:
+            print("没有可用的房间列表。")
 
     def on_setting_button_clicked(self):
         print("设置按钮被点击")
@@ -263,6 +279,9 @@ class Ui_Remote_meeting_room(object):
         self.client.handle_input('create')
         self.MainWindow.showChatRoom()
 
+    def update_room_list(self):
+        print('list', self.client.room_list)
+
     # 为按钮设置图标
     def set_button(self):
         # 为conference_Button绑定点击事件
@@ -285,5 +304,3 @@ class Ui_Remote_meeting_room(object):
 
         self.join_Button.setIcon(QIcon("icon/join.png"))
         self.create_Button.setIcon(QIcon("icon/create.png"))
-
-

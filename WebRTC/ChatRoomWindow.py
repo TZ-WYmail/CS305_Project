@@ -1,118 +1,116 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication
+from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit
+
+
 class UI_ChatRoomWindow(object):
-    def setupUi(self, ChatRoomWindow,MainWindow):
+    def setupUi(self, ChatRoomWindow, MainWindow):
         self.MainWindow = MainWindow
-        self.client=MainWindow.client
+        self.client = MainWindow.client
+        self.client.ChatRoomWindow = ChatRoomWindow
         ChatRoomWindow.setObjectName("ChatRoomWindow")
         ChatRoomWindow.resize(1100, 639)
+        if not ChatRoomWindow.objectName():
+            ChatRoomWindow.setObjectName(u"Room_Form")
+        ChatRoomWindow.resize(863, 651)
+        self.gridLayout = QGridLayout(ChatRoomWindow)
+        self.gridLayout.setObjectName(u"gridLayout")
+        self.gridLayout.setContentsMargins(0, 0, 0, 0)
+        self.frame_video = QFrame(ChatRoomWindow)
+        self.frame_video.setObjectName(u"frame_video")
+        self.frame_video.setStyleSheet(u"\n"
+                                       "background-color: rgb(198, 198, 198);")
+        self.frame_video.setFrameShape(QFrame.StyledPanel)
+        self.frame_video.setFrameShadow(QFrame.Raised)
 
-        self.centralwidget = QtWidgets.QWidget(ChatRoomWindow)
-        self.centralwidget.setObjectName("centralwidget")
+        self.gridLayout.addWidget(self.frame_video, 0, 0, 1, 1)
 
-        self.widget = QtWidgets.QWidget(self.centralwidget)
-        self.widget.setGeometry(QtCore.QRect(0, 0, 181, 591))
-        self.widget.setStyleSheet("background-color: rgb(128, 194, 255);")
-        self.widget.setObjectName("widget")
+        self.Room_frame = QFrame(ChatRoomWindow)
+        self.Room_frame.setObjectName(u"Room_frame")
+        self.Room_frame.setMaximumSize(QSize(16777215, 50))
+        self.Room_frame.setStyleSheet(u"background-color: rgb(255, 255, 255);")
+        self.Room_frame.setFrameShape(QFrame.StyledPanel)
+        self.Room_frame.setFrameShadow(QFrame.Raised)
+        self.Video_Button = QPushButton(self.Room_frame)
+        self.Video_Button.setObjectName(u"Video_Button")
+        self.Video_Button.setGeometry(QRect(20, 0, 50, 50))
+        self.Audio_Button = QPushButton(self.Room_frame)
+        self.Audio_Button.setObjectName(u"Audio_Button")
+        self.Audio_Button.setGeometry(QRect(130, 0, 50, 50))
+        self.Sound_Button = QPushButton(self.Room_frame)
+        self.Sound_Button.setObjectName(u"Sound_Button")
+        self.Sound_Button.setGeometry(QRect(240, 0, 50, 50))
+        self.Quit_Button = QPushButton(self.Room_frame)
+        self.Quit_Button.setObjectName(u"Quit_Button")
+        self.Quit_Button.setGeometry(QRect(670, 10, 121, 31))
+        self.Quit_Button.setAutoDefault(False)
+        self.Quit_Button.setFlat(False)
+        self.list_Button = QPushButton(self.Room_frame)
+        self.list_Button.setObjectName(u"list_Button")
+        self.list_Button.setGeometry(QRect(350, 0, 50, 50))
+        self.invite_Button = QPushButton(self.Room_frame)
+        self.invite_Button.setObjectName(u"invite_Button")
+        self.invite_Button.setGeometry(QRect(460, 0, 50, 50))
 
-        self.listWidget = QtWidgets.QListWidget(self.widget)
-        self.listWidget.setGeometry(QtCore.QRect(10, 20, 151, 551))
-        self.listWidget.setStyleSheet("background-color: rgb(255, 255, 255);")
-        self.listWidget.setObjectName("listWidget")
-        item = QtWidgets.QListWidgetItem()
-        self.listWidget.addItem(item)
-        item = QtWidgets.QListWidgetItem()
-        self.listWidget.addItem(item)
+        self.gridLayout.addWidget(self.Room_frame, 1, 0, 1, 2)
 
-        self.widget_chatlog = QtWidgets.QWidget(self.centralwidget)
-        self.widget_chatlog.setGeometry(QtCore.QRect(200, 40, 651, 371))
-        self.widget_chatlog.setStyleSheet("background-color: rgb(225, 225, 225);\n"
-                                          "font: 14pt \"Forte\";")
-        self.widget_chatlog.setObjectName("widget_chatlog")
+        self.chat_text = QFrame(ChatRoomWindow)
+        self.chat_text.setObjectName(u"chat_text")
+        self.chat_text.setMaximumSize(QSize(250, 16777215))
+        self.chat_text.setStyleSheet(u"QFrame{\n"
+                                     "	background-color:rgb(255, 255, 255)\n"
+                                     "}")
+        self.chat_text.setFrameShape(QFrame.StyledPanel)
+        self.chat_text.setFrameShadow(QFrame.Raised)
+        self.line = QFrame(self.chat_text)
+        self.line.setObjectName(u"line")
+        self.line.setGeometry(QRect(0, 450, 250, 20))
+        self.line.setFrameShape(QFrame.HLine)
+        self.line.setFrameShadow(QFrame.Sunken)
+        self.Send_Button = QPushButton(self.chat_text)
+        self.Send_Button.setObjectName(u"Send_Button")
+        self.Send_Button.setGeometry(QRect(160, 560, 91, 31))
+        self.Send_Button.setStyleSheet(u"QPushButton{\n"
+                                       "	background-color:rgb(0, 0, 0)\n"
+                                       "	color: rgb(0, 0, 127);\n"
+                                       "}")
+        self.message_in = QTextEdit(self.chat_text)
+        self.message_in.setObjectName(u"message_in")
+        self.message_in.setGeometry(QRect(0, 460, 251, 101))
+        self.message_output = QTextEdit(self.chat_text)
+        self.message_output.setObjectName(u"message_output")
+        self.message_output.setGeometry(QRect(3, 10, 251, 447))
+        self.message_output.setReadOnly(True)
 
-        self.widget_chatlog_2 = QtWidgets.QWidget(self.centralwidget)
-        self.widget_chatlog_2.setGeometry(QtCore.QRect(200, 420, 651, 171))
-        self.widget_chatlog_2.setStyleSheet("background-color: rgb(225, 225, 225);")
-        self.widget_chatlog_2.setObjectName("widget_chatlog_2")
-
-        self.input_space = QtWidgets.QPushButton(self.widget_chatlog_2)
-        self.input_space.setGeometry(QtCore.QRect(270, 130, 101, 23))
-        self.input_space.setStyleSheet("background-color: rgb(255, 250, 169);")
-        self.input_space.setObjectName("input_space")
-
-        self.btn_send = QtWidgets.QPushButton(self.widget_chatlog_2)
-        self.btn_send.setGeometry(QtCore.QRect(540, 120, 91, 31))
-        self.btn_send.setStyleSheet("background-color: rgb(8, 156, 255);\n"
-                                    "color: rgb(255, 255, 255);\n"
-                                    "text-align:center;")
-        self.btn_send.setObjectName("btn_send")
-
-        self.input_box = QtWidgets.QTextEdit(self.widget_chatlog_2)
-        self.input_box.setEnabled(False)
-        self.input_box.setGeometry(QtCore.QRect(20, 10, 611, 91))
-        self.input_box.setStyleSheet("background-color: rgb(255, 255, 255);\n"
-                                     "color: rgb(0, 0, 0);\n"
-                                     "font: 14pt \"Forte\";")
-        self.input_box.setObjectName("input_box")
-
-        self.label_connect_status = QtWidgets.QLabel(self.centralwidget)
-        self.label_connect_status.setGeometry(QtCore.QRect(780, 6, 71, 20))
-        self.label_connect_status.setStyleSheet("background-color: rgb(255, 0, 4);\n"
-                                                "color: rgb(255, 255, 255);")
-        self.label_connect_status.setObjectName("label_connect_status")
-
-        self.widget_2 = QtWidgets.QWidget(self.centralwidget)
-        self.widget_2.setGeometry(QtCore.QRect(860, 10, 241, 231))
-        self.widget_2.setStyleSheet("background-color: rgb(180, 180, 180);")
-        self.widget_2.setObjectName("widget_2")
-
-        self.widget_users = QtWidgets.QWidget(self.centralwidget)
-        self.widget_users.setGeometry(QtCore.QRect(860, 250, 241, 341))
-        self.widget_users.setStyleSheet("background-color: rgb(128, 194, 255);")
-        self.widget_users.setObjectName("widget_users")
-
-        self.listWidget_3 = QtWidgets.QListWidget(self.widget_users)
-        self.listWidget_3.setGeometry(QtCore.QRect(10, 40, 221, 291))
-        self.listWidget_3.setStyleSheet("background-color: rgb(255, 255, 255);")
-        self.listWidget_3.setObjectName("listWidget_3")
-
-        self.label = QtWidgets.QLabel(self.widget_users)
-        self.label.setGeometry(QtCore.QRect(20, 10, 201, 21))
-        self.label.setStyleSheet("background-color: rgb(139, 155, 255);")
-        self.label.setObjectName("label")
-
-        self.btn_voip = QtWidgets.QPushButton(self.centralwidget)
-        self.btn_voip.setEnabled(False)
-        self.btn_voip.setGeometry(QtCore.QRect(1190, 190, 71, 21))
-        self.btn_voip.setStyleSheet("background-color: rgb(124, 255, 150);\n" "color: rgb(255, 255, 255);")
-        self.btn_voip.setObjectName("btn_voip")
-
-        self.menubar = QtWidgets.QMenuBar(ChatRoomWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1100, 21))
-        self.menubar.setObjectName("menubar")
-
-        self.statusbar = QtWidgets.QStatusBar(ChatRoomWindow)
-        self.statusbar.setObjectName("statusbar")
-
+        self.gridLayout.addWidget(self.chat_text, 0, 1, 1, 1)
 
         self.retranslateUi(ChatRoomWindow)
-        QtCore.QMetaObject.connectSlotsByName(ChatRoomWindow)
 
-    def retranslateUi(self, MainWindow):
-        _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "XX 聊天室"))
-        __sortingEnabled = self.listWidget.isSortingEnabled()
-        self.listWidget.setSortingEnabled(False)
-        item = self.listWidget.item(0)
-        item.setText(_translate("MainWindow", "BB-1"))
-        item = self.listWidget.item(1)
-        item.setText(_translate("MainWindow", "BB-2"))
-        self.listWidget.setSortingEnabled(__sortingEnabled)
-        self.input_space.setText(_translate("MainWindow", "输入（空格）"))
-        self.btn_send.setText(_translate("MainWindow", "发送（回车）"))
-        self.label_connect_status.setText(_translate("MainWindow", "  离线"))
-        self.label.setText(
-            _translate("MainWindow", "<html><head/><body><p align=\"center\">频道成员</p></body></html>"))
-        self.btn_voip.setText(_translate("MainWindow", "📞"))
+        self.Quit_Button.setDefault(False)
+
+        QMetaObject.connectSlotsByName(ChatRoomWindow)
+
+    # setupUi
+
+    def retranslateUi(self, Room_Form):
+        Room_Form.setWindowTitle(QCoreApplication.translate("Room_Form", u"Form", None))
+        self.Video_Button.setText(QCoreApplication.translate("Room_Form", u"\u89c6\u9891", None))
+        self.Audio_Button.setText(QCoreApplication.translate("Room_Form", u"\u58f0\u97f3", None))
+        self.Sound_Button.setText(QCoreApplication.translate("Room_Form", u"\u97f3\u91cf", None))
+        self.Quit_Button.setText(QCoreApplication.translate("Room_Form", u"\u9000\u51fa\u4f1a\u8bae", None))
+        self.list_Button.setText(QCoreApplication.translate("Room_Form", u"\u6210\u5458", None))
+        self.invite_Button.setText(QCoreApplication.translate("Room_Form", u"\u9080\u8bf7", None))
+        self.Send_Button.setText(QCoreApplication.translate("Room_Form", u"\u53d1\u9001", None))
+        self.message_in.setHtml(QCoreApplication.translate("Room_Form",
+                                                           u"<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
+                                                           "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
+                                                           "p, li { white-space: pre-wrap; }\n"
+                                                           "</style></head><body style=\" font-family:'SimSun'; font-size:9pt; font-weight:400; font-style:normal;\">\n"
+                                                           "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">\u8bf7\u8f93\u5165\u6587\u672c\u4fe1\u606f...</p></body></html>",
+                                                           None))
+    # retranslateUi
+
+
 
 
 

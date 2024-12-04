@@ -3,8 +3,12 @@ import socketio
 import threading
 
 
+
 class client:
     def __init__(self):
+        #窗口
+        self.Ui_Remote_meeting_room = None
+        self.UI_ChatRoomWindow = None
         self.main_sio = socketio.Client()
         #指令列表
         self.commands = {
@@ -24,12 +28,20 @@ class client:
         self.main_sio.on('command_message', self.on_command)
 
         #房间信息
+        #房间列表
+        self.refresh_room=False
+        self.room_list = []
         self.is_in_room = False
         self.room_id = None
 
+        #房间通信事件
+        self.main_sio.on('system_notification', self.on_system_notification)
         self.main_sio.on('chat_message', self.on_chat_message)
         self.main_sio.on('video_message', self.on_video_message)
         self.main_sio.on('audio_message', self.on_audio_message)
+
+        #成员列表
+        self.member_list = []
 
     #处理连接消息,包括和服务器的文本传输测试
     def on_connect_message(self, data):
@@ -58,10 +70,20 @@ class client:
             self.room_id = None
         elif command == 'list':
             print(f"{data['timestamp']}:房间列表: {data['message']}")
+            self.room_list = data['message']
+            self.refresh_room=True
         else:
             print(f"{data['timestamp']}:未知命令:{command}")
 
     #处理聊天信息
+    #处理系统通知
+
+    def on_system_notification(self, data):  #聊天室中的系统通知，包括用户加入和退出，更新用户列表
+        print(f"{data['timestamp']}:系统通知: {data['message']}")
+        if data['command'] == 'list':
+            self.member_list = data['members']
+            print(f"{data['timestamp']}:用户列表: {data['members']}")
+
     def on_chat_message(self, data):
         print(f"{data['timestamp']}:{data['user']}: {data['message']}")
 
@@ -103,6 +125,7 @@ class client:
         #         self.handle_input(message)
         # finally:
         #     self.main_sio.disconnect()
+    # 界面绑定
 
 
 if __name__ == '__main__':
