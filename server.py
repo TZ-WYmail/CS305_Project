@@ -29,22 +29,22 @@ async def join(sid, data):
 
 @sio.event
 async def offer(sid, data):
-    print(f"Offer:{data}")
+    print(f"Offer:{sid} {rooms[data['room']]}")
     await sio.emit('offer', data, room=data['room'], skip_sid=sid)
 
 @sio.event
 async def answer(sid, data):
-    print(f"Answer:{data}")
+    print(f"Answer")
     await sio.emit('answer', data, room=data['room'], skip_sid=sid)
 
 @sio.event
 async def ice_candidate(sid, data):
-    print(f"ICE candidate:{data}")
+    print(f"ICE candidate")
     await sio.emit('ice_candidate', data, room=data['room'], skip_sid=sid)
 
 @sio.event
 async def message(sid, data):
-    print(f"Message:{data}")
+    print(f"Message")
     await sio.emit('message', data, room=data['room'], skip_sid=sid)
 
 if __name__ == '__main__':

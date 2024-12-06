@@ -94,21 +94,26 @@ class VideoWidget(QWidget):
         pixmap = QPixmap.fromImage(q_img)
         self.image_label.setPixmap(pixmap.scaled(320, 240, Qt.KeepAspectRatio))
 
-class PCStateMonitorThread(QThread):
-    def __init__(self, pc):
+class DummyVideoTrack(MediaStreamTrack):
+    kind = "video"
+    
+    def __init__(self):
         super().__init__()
-        self.pc = pc
         self.running = True
-
-    def run(self):
-        while self.running:
-            print(f"PeerConnection状态: {self.pc.connectionState}")
-            print(f"ICE收集状态: {self.pc.iceGatheringState}")
-            print(f"ICE连接状态: {self.pc.iceConnectionState}")
-            print(f"信令状态: {self.pc.signalingState}")
-            print("-" * 50)
-            time.sleep(1)  # 每秒更新一次
-
+        # 创建黑色帧
+        self.frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+    async def recv(self):
+        if not self.running:
+            raise MediaStreamError
+            
+        # 创建VideoFrame
+        video_frame = VideoFrame.from_ndarray(self.frame, format="rgb24") 
+        video_frame.pts = int(time.time() * 1000)
+        video_frame.time_base = fractions.Fraction(1, 1000)
+        
+        return video_frame
+        
     def stop(self):
         self.running = False
 class CameraStreamTrack(MediaStreamTrack):
@@ -119,36 +124,31 @@ class CameraStreamTrack(MediaStreamTrack):
         self.cap = cv2.VideoCapture(0)
         print(self.cap)
         if not self.cap.isOpened():
-            raise RuntimeError("无法打开摄像头")
-        
-        # 设置摄像头参数
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        
-        self.running = True
+            print("无法打开摄像头，使用DummyVideoTrack")
+            self.use_dummy = True
+            self.dummy_track = DummyVideoTrack()
+        else:
+            self.use_dummy = False
 
     async def recv(self):
-        if not self.running:
-            raise MediaStreamError("Track has ended")
-        ret, frame = self.cap.read()
-        if not ret:
-            raise MediaStreamError("Failed to get frame from camera")
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # 创建VideoFrame
-        video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-        video_frame.pts = int(time.time() * 1000) 
-        video_frame.time_base = fractions.Fraction(1, 1000) 
-        
-        return video_frame
+        if self.use_dummy:
+            return await self.dummy_track.recv()
+        else:
+            ret, frame = self.cap.read()
+            if not ret:
+                raise MediaStreamError
+            video_frame = VideoFrame.from_ndarray(frame, format="bgr24") 
+            video_frame.pts = int(time.time() * 1000)
+            video_frame.time_base = fractions.Fraction(1, 1000)
+            return video_frame
 
     def stop(self):
-        self.running = False
-        if self.cap:
-            self.cap.release()
-
+        if self.use_dummy:
+            self.dummy_track.stop()
+        else:
+            if self.cap and self.cap.isOpened():
+                self.cap.release()
+        super().stop()
 class VideoUpdateThread(QThread):
     frame_ready = pyqtSignal(np.ndarray)
 
@@ -182,7 +182,101 @@ class VideoUpdateThread(QThread):
     def stop(self):
         self.running = False
 
+class WebRTCManager:
+    def __init__(self, loop):
+        self.pc = None
+        self.loop = loop
+        self.video_track = None
+        self.audio_track = None
+        self._setup_ice_servers()
+        
+    def _setup_ice_servers(self):
+        self.config = RTCConfiguration([
+            RTCIceServer(urls=['stun:49.235.44.81:3478'])
+        ])
+        
+    async def create_peer_connection(self):
+        """创建新的 PeerConnection 实例"""
+        if self.pc:
+            await self.close_connection()
+            
+        self.pc = RTCPeerConnection(configuration=self.config)
+        return self.pc
+        
+    async def close_connection(self):
+        """关闭当前连接"""
+        if self.pc:
+            await self.pc.close()
+            self.pc = None
+            await asyncio.sleep(0.5)
+            
+    def add_track(self, track):
+        """添加媒体轨道"""
+        if self.pc and track:
+            self.pc.addTrack(track)
+            
+    async def create_and_send_offer(self):
+        """创建并返回 offer"""
+        if not self.pc:
+            raise Exception("No PeerConnection available")
+        offer = await self.pc.createOffer()
+        await self.pc.setLocalDescription(offer)
+        return offer
+        
+    async def handle_remote_description(self, sdp, type_):
+        """处理远程 SDP"""
+        if not self.pc:
+            raise Exception("No PeerConnection available")
+        await self.pc.setRemoteDescription(
+            RTCSessionDescription(sdp=sdp, type=type_)
+        )
+        
+    async def create_and_send_answer(self):
+        """创建并返回 answer"""
+        if not self.pc:
+            raise Exception("No PeerConnection available")
+        answer = await self.pc.createAnswer()
+        await self.pc.setLocalDescription(answer)
+        return answer
+
+class MediaTrackManager:
+    def __init__(self):
+        self.video_track = None
+        self.audio_track = None
+        self.dummy_video = DummyVideoTrack()
+        self.dummy_audio = AudioStreamTrack()
+        self.dummy_audio.enabled = False
+        
+    def get_video_track(self, enabled=False):
+        """获取视频轨道，enabled=True 返回摄像头流，False 返回黑屏流"""
+        if enabled:
+            if not self.video_track:
+                self.video_track = CameraStreamTrack()
+            return self.video_track
+        return self.dummy_video
+        
+    def get_audio_track(self, enabled=False):
+        """获取音频轨道，enabled=True 返回麦克风流，False 返回静音流"""
+        if enabled:
+            if not self.audio_track:
+                self.audio_track = AudioStreamTrack()
+            return self.audio_track
+        return self.dummy_audio
+
+    def stop_all(self):
+        """停止所有轨道"""
+        if self.video_track:
+            self.video_track.stop()
+        if self.audio_track:
+            self.audio_track.stop()
+        self.dummy_video.stop()
+        self.dummy_audio.stop()
+
 class WebRTCClient(QMainWindow):
+
+    start_remote_video_signal = pyqtSignal()
+    start_remote_audio_signal = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle('P2P Video Chat')
@@ -204,12 +298,37 @@ class WebRTCClient(QMainWindow):
         # 创建事件循环
         self.loop = asyncio.new_event_loop()
         
+        #连接槽函数
+        self.start_remote_video_signal.connect(self.start_remote_video)
+        self.start_remote_audio_signal.connect(self.start_remote_audio)
+
         # 创建并启动事件循环线程
         self.loop_thread = threading.Thread(target=self._run_event_loop, daemon=True)
         self.loop_thread.start()
         
         self.setup_ui()
         self.setup_socket_signals()
+        self.webrtc = WebRTCManager(self.loop)
+        self.media_manager = MediaTrackManager()
+        self.setup_default_tracks()
+
+    def setup_default_tracks(self):
+        """初始化默认的媒体轨道（黑屏和静音）"""
+        # 确保一开始就有默认轨道
+        self.video_track = self.media_manager.get_video_track(False)  # 默认黑屏
+        self.audio_track = self.media_manager.get_audio_track(False)  # 默认静音
+
+    def start_remote_video(self):
+        if self.remote_video and not self.remote_video_thread:
+            self.remote_video_thread = VideoUpdateThread(self.remote_video)
+            self.remote_video_thread.frame_ready.connect(self.update_remote_frame)
+            self.remote_video_thread.start()
+
+    def start_remote_audio(self):
+        if self.remote_audio and not self.remote_audio_player:
+            # 初始化音频播放器等逻辑
+            pass
+
 
     def _run_event_loop(self):
         """在独立线程中运行事件循环"""
@@ -278,7 +397,7 @@ class WebRTCClient(QMainWindow):
     def setup_socket_signals(self):
         self.socket_thread.message_received.connect(self.on_message)
         self.socket_thread.ready_signal.connect(self.on_ready)
-        self.socket_thread.offer_received.connect(self.on_offer)
+        self.socket_thread.offer_received.connect(self.handle_offer)
         self.socket_thread.answer_received.connect(self.on_answer)
         self.socket_thread.candidate_received.connect(self.on_ice_candidate)
         
@@ -294,105 +413,172 @@ class WebRTCClient(QMainWindow):
                     self.socket_thread.connect_to_server('http://localhost:5000')
                     self.server_connected = True
                 
+                # 确保先创建新的 PeerConnection
+                self.create_new_peer_connection()
                 self.socket_thread.join_room(room)
-                self.init_webrtc()  
                 self.is_room_joined = True
                 self.join_button.setText('已加入房间')
                 self.join_button.setEnabled(False)
                 self.room_input.setEnabled(False)
-                
-                # 启用媒体控制按钮
                 self.video_button.setEnabled(True)
                 self.audio_button.setEnabled(True)
                 
             except Exception as e:
                 print(f"加入房间失败: {e}")
 
-    def init_webrtc(self):
-        try:
-            ice_configuration = RTCConfiguration([
-                RTCIceServer(
-                    urls=['stun:49.235.44.81:3478']
-                )
-            ])
-            # 创建 PeerConnection 时使用此配置
-            self.pc = RTCPeerConnection(configuration=ice_configuration)
-            
-            # 调用setLocalDescription()后的ice收集过程中触发
-            @self.pc.on('icecandidate')
-            def on_ice_candidate(candidate):
-                print("收到 ICE candidate")
-                if candidate:
-                    self.socket_thread.sio.emit('ice_candidate', {
-                        'room': self.room_input.text(),
-                        'candidate': candidate.to_dict()
-                    })
+    def create_new_peer_connection(self):
+        """创建新的 PeerConnection 实例"""
+        async def setup_pc():
+            try:
+                pc = await self.webrtc.create_peer_connection()
+                
+                @pc.on('connectionstatechange')
+                def on_connectionstatechange():
+                    print(f"连接状态变更: {pc.connectionState}")
+                    
+                @pc.on('signalingstatechange')    
+                def on_signalingstatechange():
+                    print(f"信令状态变更: {pc.signalingState}")
+                
+                @pc.on('icecandidate')
+                def on_ice_candidate(candidate):
+                    if candidate:
+                        self.socket_thread.sio.emit('ice_candidate', {
+                            'room': self.room_input.text(),
+                            'candidate': candidate.to_dict()
+                        })
 
-            @self.pc.on('track')
-            def on_track(track):
-                print(f"收到媒体轨道: {track.kind}")
-                if track.kind == "video":
-                    self.remote_video = track
-                    # 使用 QMetaObject.invokeMethod 确保在主线程中更新UI
-                    QMetaObject.invokeMethod(self, "start_remote_video",
-                                           Qt.QueuedConnection)
-                elif track.kind == "audio":
-                    self.remote_audio = track
-                    QMetaObject.invokeMethod(self, "start_remote_audio",
-                                           Qt.QueuedConnection)
+                @pc.on('track')
+                def on_track(track):
+                    print(f"收到媒体轨道: {track.kind}")
+                    if track.kind == "video":
+                        self.remote_video = track
+                        self.start_remote_video_signal.emit()
+                    elif track.kind == "audio":
+                        self.remote_audio = track
+                        self.start_remote_audio_signal.emit()
+                
+                # 立即添加媒体轨道
+                pc.addTrack(self.video_track)
+                pc.addTrack(self.audio_track)
+
+                print("新连接创建成功")
+                return True
+                
+            except Exception as e:
+                print(f"创建连接失败: {e}")
+                return False
+                
+        return asyncio.run_coroutine_threadsafe(setup_pc(), self.loop)
+
+    async def create_offer(self):
+        try:
+            if not self.webrtc.pc:
+                print("等待 PeerConnection 创建完成...")
+                return
+                
+            await self.setup_media_tracks()
+            offer = await self.webrtc.create_and_send_offer()
+            self.socket_thread.sio.emit('offer', {
+                'room': self.room_input.text(),
+                'sdp': offer.sdp
+            })
         except Exception as e:
-            print(f"WebRTC初始化失败: {e}")
+            print(f"Create offer failed: {e}")
+
+    async def _handle_offer(self, data):
+        print("收到offer,开始处理...")
+        try:
+            # 1. 创建新的 PeerConnection
+            await self.create_new_peer_connection()
+            
+            # 2. 设置媒体轨道
+            await self.setup_media_tracks()
+            
+            # 3. 设置远程描述并创建应答
+            await self.webrtc.handle_remote_description(data['sdp'], 'offer')
+            answer = await self.webrtc.create_and_send_answer()
+            
+            # 4. 发送应答
+            self.socket_thread.sio.emit('answer', {
+                'room': self.room_input.text(),
+                'sdp': answer.sdp
+            })
+            
+        except Exception as e:
+            print(f"处理offer失败: {e}")
             raise e
+
+    def on_answer(self, data):
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self.webrtc.handle_remote_description(data['sdp'], 'answer'),
+                self.loop
+            )
+            print("Answer processed successfully")
+        except Exception as e:
+            print(f"处理 answer 失败: {e}")
+
     #点击开启视频绑定的事件
     def toggle_video(self):
         try:
             if not self.is_video_enabled:
-                if not self.video_track:
-                    self.video_track = CameraStreamTrack()
-                    if self.pc:
-                        # 检查是否已存在视频发送器
-                        existing_senders = self.pc.getSenders()
-                        video_sender = next((sender for sender in existing_senders 
-                                           if sender.track and sender.track.kind == "video"), None)
-                        if not video_sender:
-                            self.loop.run_until_complete(self.add_video_track())
-                self.start_video_stream()
-                self.is_video_enabled = True
-                self.video_button.setText('关闭视频')
-                print("视频已开启")
+                # 切换到摄像头视频流
+                new_track = self.media_manager.get_video_track(True)
             else:
-                self.stop_video_stream()
-                if self.video_track:
-                    self.video_track.stop()
-                    self.video_track = None
-                self.is_video_enabled = False
-                self.video_button.setText('开启视频')
-                print("视频已关闭")
+                # 切换到黑屏流
+                new_track = self.media_manager.get_video_track(False)
+                
+            self.video_track = new_track  # 更新当前轨道引用
+            self.is_video_enabled = not self.is_video_enabled
+            self.video_button.setText('关闭视频' if self.is_video_enabled else '开启视频')
+            
+            # 更新PC的视频轨道
+            if self.webrtc.pc:
+                senders = self.webrtc.pc.getSenders()
+                video_sender = next((s for s in senders if s.track and s.track.kind == "video"), None)
+                if video_sender:
+                    asyncio.run_coroutine_threadsafe(
+                        video_sender.replaceTrack(new_track),
+                        self.loop
+                    )
+            
+            # 更新本地预览
+            if self.video_thread:
+                self.video_thread.stop()
+                self.video_thread.wait()
+            self.video_thread = VideoUpdateThread(new_track)
+            self.video_thread.frame_ready.connect(self.update_video_frame)
+            self.video_thread.start()
+            
+            print(f"视频已{'开启' if self.is_video_enabled else '关闭'}")
+            
         except Exception as e:
             print(f"视频切换失败: {e}")
 
     def toggle_audio(self):
         try:
             if not self.is_audio_enabled:
-                if not self.audio_track:
-                    self.audio_track = AudioStreamTrack()
-                    if self.pc:
-                        # 检查是否已存在音频发送器
-                        existing_senders = self.pc.getSenders()
-                        audio_sender = next((sender for sender in existing_senders 
-                                           if sender.track and sender.track.kind == "audio"), None)
-                        if not audio_sender:
-                            self.loop.run_until_complete(self.add_audio_track())
-                self.is_audio_enabled = True
-                self.audio_button.setText('关闭音频')
-                self.audio_track.enabled = True
-                print("音频已开启")
+                new_track = self.media_manager.get_audio_track(True)
             else:
-                if self.audio_track:
-                    self.audio_track.enabled = False
-                self.is_audio_enabled = False
-                self.audio_button.setText('开启音频')
-                print("音频已关闭")
+                new_track = self.media_manager.get_audio_track(False)
+                
+            self.audio_track = new_track  # 更新当前轨道引用
+            self.is_audio_enabled = not self.is_audio_enabled
+            self.audio_button.setText('关闭音频' if self.is_audio_enabled else '开启音频')
+            
+            # 更新PC的音频轨道
+            if self.webrtc.pc:
+                senders = self.webrtc.pc.getSenders()
+                audio_sender = next((s for s in senders if s.track and s.track.kind == "audio"), None)
+                if audio_sender:
+                    asyncio.run_coroutine_threadsafe(
+                        audio_sender.replaceTrack(new_track),
+                        self.loop
+                    )
+            
+            print(f"音频已{'开启' if self.is_audio_enabled else '关闭'}")
+            
         except Exception as e:
             print(f"音频切换失败: {e}")
 
@@ -481,68 +667,109 @@ class WebRTCClient(QMainWindow):
 
     def on_ready(self):
         print("Room is ready for WebRTC connection")
-        # 当房间准备就绪时，创建并发送 offer
-        asyncio.run_coroutine_threadsafe(self.create_offer(), self.loop)
+        # 先确保创建 PeerConnection，再创建 offer
+        self.create_new_peer_connection().add_done_callback(
+            lambda _: asyncio.run_coroutine_threadsafe(self.create_offer(), self.loop)
+        )
 
 
     async def create_offer(self):
         try:
-
+            if not self.webrtc.pc:
+                print("等待 PeerConnection 创建完成...")
+                return
+                
             await self.setup_media_tracks()
-            offer = await self.pc.createOffer()
-            await self.pc.setLocalDescription(offer)
-            print(111)
+            offer = await self.webrtc.create_and_send_offer()
             self.socket_thread.sio.emit('offer', {
                 'room': self.room_input.text(),
-                'sdp': self.pc.localDescription.sdp
+                'sdp': offer.sdp
             })
         except Exception as e:
             print(f"Create offer failed: {e}")
-
-    async def on_offer(self, data):
-        print("Received offer")
+            
+    def handle_offer(self, data):
         try:
-            # 设置远程描述
+            # 创建任务并等待结果
+            future = asyncio.run_coroutine_threadsafe(self._handle_offer(data), self.loop)
+            future.result(timeout=10)  # 设置合理的超时时间
+        except Exception as e:
+            print(f"处理 offer 错误: {e}")
+    
+    async def _handle_offer(self, data):
+        print("收到offer,开始处理...")
+        try:
+            # 1. 保存当前媒体状态
+            had_video = self.video_track is not None
+            had_audio = self.audio_track is not None
+            
+            # 2. 等待旧连接关闭
+            if self.pc:
+                await self.pc.close()
+                self.pc = None
+                await asyncio.sleep(0.5)
+    
+            # 3. 创建新连接
+            ice_configuration = RTCConfiguration([
+                RTCIceServer(urls=['stun:49.235.44.81:3478'])
+            ])
+            self.pc = RTCPeerConnection(configuration=ice_configuration)
+            
+            # 4. 设置事件处理器
+            @self.pc.on('connectionstatechange')
+            def on_connectionstatechange():
+                print(f"连接状态变更: {self.pc.connectionState}")
+                
+            @self.pc.on('signalingstatechange')    
+            def on_signalingstatechange():
+                print(f"信令状态变更: {self.pc.signalingState}")
+            
+            # 5. 等待连接就绪
+            await asyncio.sleep(0.5)
+            
+            # 6. 恢复媒体轨道
+            if had_video:
+                await self.add_video_track()
+            if had_audio:
+                await self.add_audio_track()
+                
+            # 7. 设置远程描述
             await self.pc.setRemoteDescription(
                 RTCSessionDescription(sdp=data['sdp'], type='offer')
             )
             
-            # 确保本地媒体轨道已设置
-            await self.setup_media_tracks()
-            
-            # 创建并发送 answer
+            # 8. 创建应答
             answer = await self.pc.createAnswer()
             await self.pc.setLocalDescription(answer)
             
+            # 9. 发送应答
             self.socket_thread.sio.emit('answer', {
                 'room': self.room_input.text(),
                 'sdp': self.pc.localDescription.sdp
             })
+            
         except Exception as e:
-            print(f"处理 offer 失败: {e}")
-
+            print(f"处理offer失败: {e}")
+            print(f"当前信令状态: {self.pc.signalingState if self.pc else 'None'}")
+            raise e
+            
     async def setup_media_tracks(self):
+        """初始化媒体轨道"""
         try:
-            # 检查是否已经添加了轨道
-            existing_senders = self.pc.getSenders()
-            existing_video = any(sender.track and sender.track.kind == "video" for sender in existing_senders)
-            existing_audio = any(sender.track and sender.track.kind == "audio" for sender in existing_senders)
-            
-            if not existing_video:
-                if not self.video_track:
-                    self.video_track = CameraStreamTrack()
-                if self.pc:
-                    self.pc.addTrack(self.video_track)
-            
-            if not existing_audio:
-                if not self.audio_track:
-                    self.audio_track = AudioStreamTrack()
-                if self.pc:
-                    self.pc.addTrack(self.audio_track)
+            if not self.webrtc.pc:
+                print("PeerConnection not ready")
+                return
+                
+            # 添加当前状态的轨道
+            self.webrtc.pc.addTrack(self.video_track)
+            self.webrtc.pc.addTrack(self.audio_track)
             
             # 启动本地预览
-            if not existing_video:
-                self.start_video_stream()
+            if not self.video_thread:
+                self.video_thread = VideoUpdateThread(self.video_track)
+                self.video_thread.frame_ready.connect(self.update_video_frame)
+                self.video_thread.start()
+                
         except Exception as e:
             print(f"Setup media tracks failed: {e}")
 
@@ -593,6 +820,7 @@ class WebRTCClient(QMainWindow):
             print(f"更新远程视频帧失败: {e}")
 
     def closeEvent(self, event):
+        self.media_manager.stop_all()
         if self.video_track:
             self.video_track.stop()
         if self.video_thread:
