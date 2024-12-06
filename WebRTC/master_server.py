@@ -54,12 +54,10 @@ class Master_Server:
         for room_id in list(self.rooms.keys()):
             if self.rooms[room_id]['host'] == sid:
                 # 如果用户是房间的host，则移除房间中的所有用户，并删除房间
-                for user in self.rooms[room_id]['users'][:]:
+                for user in self.rooms[room_id]['users']:
                     self.sio.leave_room(user, room_id)
-                    for user in self.rooms[room_id]['users']:
-                        self.sio.emit('chat_message', {'user': user, 'timestamp': self.get_timestamp(),
-                                                       'message': user + ' 取消了会议'},
-                                      room=user)
+                    self.sio.emit('system_notification', {'user': user, 'timestamp': self.get_timestamp(),
+                                                          'message': user + ' 取消了会议'},room=user)
                     self.sio.emit('command_message', {'user': user, 'command': 'quit', 'room_id': room_id}, room=user)
                 del self.rooms[room_id]  # 删除房间
             else:
@@ -69,8 +67,8 @@ class Master_Server:
                     self.sio.leave_room(sid, room_id)
                     for user in self.rooms[room_id]['users']:
                         if user != sid:
-                            self.sio.emit('chat_message', {'user': user, 'timestamp': self.get_timestamp(),
-                                                           'message': user + ' 断开了连接'}, room=user)
+                            self.sio.emit('system_notification', {'user': user, 'timestamp': self.get_timestamp(),
+                                                                  'message': user + ' 断开了连接'}, room=user)
 
     #服务器交互事件实现
     #文本消息处理
@@ -95,19 +93,22 @@ class Master_Server:
                 self.sio.enter_room(sid, room_id)
                 self.sio.emit('command_message',
                               {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'create', 'room_id': room_id},
-                              room=room_id)
+                              room=sid)
 
         elif command == 'join':
             room_id = data['room_id']
             if room_id in self.rooms:
                 self.rooms[room_id]['users'].append(sid)
                 self.sio.enter_room(sid, room_id)
+                #告知该用户加入成功
                 self.sio.emit('command_message',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'join', 'room_id': room_id})
+                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'join', 'room_id': room_id},
+                              room=sid)
                 #告知该房间的其他用户，这个用户加入了房间
                 for user in self.rooms[room_id]['users']:
                     self.sio.emit('system_notification',
-                                  {'user': user, 'timestamp': self.get_timestamp(),'command':'list', 'message': user + '加入了房间','members': self.rooms[room_id]['users']},
+                                  {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
+                                   'message': user + '加入了房间', 'members': self.rooms[room_id]['users']},
                                   room=user)
             else:
                 self.sio.emit('error_message',
