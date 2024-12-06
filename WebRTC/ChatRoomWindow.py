@@ -4,6 +4,9 @@ from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication,Qt
 from PyQt5.QtGui import QIcon, QCursor
 from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy
 
+from WebRTC.InviteMessageWindow import InviteMessageWindow
+from WebRTC.ListWindow import ListWindow
+
 
 class UI_ChatRoomWindow(object):
     def setupUi(self, ChatRoomWindow, MainWindow):
@@ -163,6 +166,16 @@ class UI_ChatRoomWindow(object):
                                        "	background-color:rgb(0, 0, 0)\n"
                                        "	color: rgb(0, 0, 127);\n"
                                        "}")
+
+        self.Clear_Button = QPushButton(self.chat_text)
+        self.Clear_Button.setObjectName(u"Clear_Button")
+        self.Clear_Button.setGeometry(QRect(0, 560, 91, 31))
+        self.Clear_Button.setStyleSheet(u"QPushButton{\n"
+                                       "	background-color:rgb(0, 0, 0)\n"
+                                       "	color: rgb(0, 0, 127);\n"
+                                       "}")
+
+
         self.message_in = QTextEdit(self.chat_text)
         self.message_in.setObjectName(u"message_in")
         self.message_in.setGeometry(QRect(0, 460, 251, 101))
@@ -177,6 +190,8 @@ class UI_ChatRoomWindow(object):
 
         self.Quit_Button.setDefault(False)
 
+        self.set_button()
+
         QMetaObject.connectSlotsByName(ChatRoomWindow)
 
     # setupUi
@@ -190,6 +205,7 @@ class UI_ChatRoomWindow(object):
         self.list_Button.setText(QCoreApplication.translate("Room_Form", u"\u6210\u5458", None))
         self.invite_Button.setText(QCoreApplication.translate("Room_Form", u"\u9080\u8bf7", None))
         self.Send_Button.setText(QCoreApplication.translate("Room_Form", u"\u53d1\u9001", None))
+        self.Clear_Button.setText(QCoreApplication.translate("Room_Form", u" \u6e05\u9664", None))
         self.message_in.setHtml(QCoreApplication.translate("Room_Form",
                                                            u"<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
                                                            "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
@@ -198,6 +214,49 @@ class UI_ChatRoomWindow(object):
                                                            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">\u8bf7\u8f93\u5165\u6587\u672c\u4fe1\u606f...</p></body></html>",
                                                            None))
     # retranslateUi
+
+
+    def set_button(self):
+        # self.Video_Button.clicked.connect(self.show_video)
+        # self.Audio_Button.clicked.connect(self.show_audio)
+        # self.Sound_Button.clicked.connect(self.show_sound)
+        self.Quit_Button.clicked.connect(self.quit_meeting)
+        self.Send_Button.clicked.connect(self.send_chat_message)
+        self.Clear_Button.clicked.connect(self.clear_chat_message)
+        self.list_Button.clicked.connect(self.show_member_list)
+        self.invite_Button.clicked.connect(self.show_invite_mseeage)
+
+    def quit_meeting(self):
+        self.client.handle_input('quit')
+        self.clear_chat_message()
+
+    def show_chat_message(self, message):
+        self.message_output.append(message)
+
+    def send_chat_message(self):
+        message=self.message_in.toPlainText()
+        self.message_in.clear()
+        self.client.send_chat_message(message)
+
+    def clear_chat_message(self):
+        self.message_output.clear()
+
+    def show_member_list(self):
+        print("列表按钮被点击")
+        print('client.member_list', self.client.member_list)
+        # 检查房间列表是否为空，如果不为空，则显示 ListWindow
+        self.list_window = ListWindow(self.client.member_list)
+        self.list_window.show()  # 显示 ListWindow
+
+    def show_invite_mseeage(self):
+        print("邀请按钮被点击")
+        # 假设这些是您的会议号和参会人员列表
+        meeting_id = self.client.room_id
+        attendees = self.client.member_list
+        # 创建 InviteMessageWindow 实例并显示
+        self.invite_window = InviteMessageWindow(meeting_id, attendees)
+        self.invite_window.show()
+
 
 
 

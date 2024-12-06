@@ -10,12 +10,12 @@ from WebRTC.ListWindow import ListWindow
 
 class Ui_Remote_meeting_room(object):
 
-
-
     def setupUi(self, Remote_meeting_room, MainWindow):
         self.MainWindow = MainWindow
         self.client = MainWindow.client
         self.client.Ui_Remote_meeting_room = Remote_meeting_room
+        self.ListWindow = None
+
         if not Remote_meeting_room.objectName():
             Remote_meeting_room.setObjectName(u"Remote_meeting_room")
         Remote_meeting_room.setWindowModality(Qt.WindowModal)
@@ -279,16 +279,8 @@ class Ui_Remote_meeting_room(object):
         self.client.refresh_room = False
         print('client.room_list', self.client.room_list)
         # 检查房间列表是否为空，如果不为空，则显示 ListWindow
-        if self.client.room_list:
-            listWindow = ListWindow(self.client.room_list)
-            listWindow.room_list = self.client.room_list
-            print('listWindow.room_list',listWindow.room_list)
-            response = listWindow.exec_()  # 显示对话框并等待用户关闭它
-            if response == QDialog.Accepted:
-                # 如果用户点击了确定或关闭了对话框，可以在这里添加后续逻辑
-                pass
-        else:
-            print("没有可用的房间列表。")
+        self.list_window = ListWindow(self.client.room_list)
+        self.list_window.show()  # 显示 ListWindow
 
     def on_setting_button_clicked(self):
         print("设置按钮被点击")
@@ -303,15 +295,19 @@ class Ui_Remote_meeting_room(object):
             meeting_id = dialog.get_meeting_id()
             print(f"加入会议号：{meeting_id}")
             self.client.handle_input('join ' + meeting_id)
-            # 假设加入会议成功后，显示聊天室窗口
-            from Main import MainWindow
-            self.MainWindow.showChatRoom()
+            if self.client.is_error and self.client.error_message == '房间不存在':
+                print('房间不存在')
+                self.client.is_error = False
+                self.client.error_message = ''
+            else:
+                self.MainWindow.showChatRoom()
 
     def on_create_meeting_button_clicked(self):
         from Main import MainWindow
         print("创建会议按钮被点击")
         self.client.handle_input('create')
         self.MainWindow.showChatRoom()
+        self.client.UI_ChatRoomWindow.clear_chat_message()
 
     def update_room_list(self):
         print('list', self.client.room_list)

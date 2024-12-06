@@ -16,12 +16,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # 创建主窗口UI
         self.mainWidget = QtWidgets.QWidget()
         self.ui = Ui_Remote_meeting_room()
+        self.client.Ui_Remote_meeting_room=self.ui
         self.ui.setupUi(self.mainWidget,self)
         self.stackedWidget.addWidget(self.mainWidget)
 
         # 创建聊天室窗口UI
         self.chatRoomWidget = QtWidgets.QWidget()
         self.chatRoomUi = UI_ChatRoomWindow()
+        self.client.UI_ChatRoomWindow=self.chatRoomUi
         self.chatRoomUi.setupUi(self.chatRoomWidget,self)
         self.stackedWidget.addWidget(self.chatRoomWidget)
 
@@ -29,6 +31,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def showChatRoom(self):
         self.stackedWidget.setCurrentWidget(self.chatRoomWidget)
+
+    def showMainWindow(self):
+        self.stackedWidget.setCurrentWidget(self.mainWidget)
 
     def network(self):
         self.client = client()

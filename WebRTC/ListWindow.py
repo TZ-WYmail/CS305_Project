@@ -1,22 +1,21 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QListWidget, QPushButton, QDialog
 
 
-class ListWindow(QDialog):
-
-    def __init__(self,room_list,parent=None):
+class ListWindow(QWidget):
+    def __init__(self, room_list, parent=None):
         super(ListWindow, self).__init__(parent)
-        layout = QVBoxLayout()
+        self.room_list = room_list
+        self.initUI()
+
+    def initUI(self):
         self.setWindowTitle('列表界面')
         self.setGeometry(100, 100, 300, 200)  # 设置窗口位置和大小
 
-        # 这里可以添加列表内容，比如一个列表框
+        # 创建布局
+        layout = QVBoxLayout(self)
+
+        # 创建列表框并添加列表项
         self.listWidget = QListWidget()
         for item in self.room_list:
-            self.listWidget.addItem(item.text())
-            print(item)
-        layout.addWidget(self.listWidget)
-
-    def addItem(self):
-        for item in self.room_list:
-            self.listWidget.addItem(item.text())
-            print(item)
+            self.listWidget.addItem(item)
+        layout.addWidget(self.listWidget)  # 将列表框添加到布局中

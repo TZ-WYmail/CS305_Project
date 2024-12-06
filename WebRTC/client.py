@@ -3,7 +3,6 @@ import socketio
 import threading
 
 
-
 class client:
     def __init__(self):
         #窗口
@@ -29,7 +28,7 @@ class client:
 
         #房间信息
         #房间列表
-        self.refresh_room=False
+        self.refresh_room = False
         self.room_list = []
         self.is_in_room = False
         self.room_id = None
@@ -41,7 +40,12 @@ class client:
         self.main_sio.on('audio_message', self.on_audio_message)
 
         #成员列表
+        self.refresh_member = False
         self.member_list = []
+
+        #错误处理
+        self.is_error = False
+        self.error_message=''
 
     #处理连接消息,包括和服务器的文本传输测试
     def on_connect_message(self, data):
@@ -50,6 +54,8 @@ class client:
     #处理错误消息
     def on_error_message(self, data):
         print(f"错误:{data['timestamp']}: {data['message']}")
+        self.is_error = True
+        self.error_message = data['message']
 
     #处理command信息
     def on_command(self, data):
@@ -66,12 +72,13 @@ class client:
             self.room_id = data['room_id']
         elif command == 'quit':
             print(f"{data['timestamp']}:退出成功 {data['room_id']}")
+            self.UI_ChatRoomWindow.MainWindow.showMainWindow()
             self.is_in_room = False
             self.room_id = None
         elif command == 'list':
             print(f"{data['timestamp']}:房间列表: {data['message']}")
             self.room_list = data['message']
-            self.refresh_room=True
+            self.refresh_room = True
         else:
             print(f"{data['timestamp']}:未知命令:{command}")
 
@@ -80,12 +87,18 @@ class client:
 
     def on_system_notification(self, data):  #聊天室中的系统通知，包括用户加入和退出，更新用户列表
         print(f"{data['timestamp']}:系统通知: {data['message']}")
-        if data['command'] == 'list':
+        self.UI_ChatRoomWindow.show_chat_message(f"{data['timestamp']}:系统通知: {data['message']}")
+        #处理用户列表的跟新（join，create，quit，disconnect），这里直接用command作为key
+        if 'command' in data and data['command'] == 'list':
             self.member_list = data['members']
             print(f"{data['timestamp']}:用户列表: {data['members']}")
 
     def on_chat_message(self, data):
         print(f"{data['timestamp']}:{data['user']}: {data['message']}")
+        self.UI_ChatRoomWindow.show_chat_message('<<' + data['timestamp'] + '>>' + data['user'] + ':' + data['message'])
+
+    def send_chat_message(self, message):
+        self.main_sio.emit('chat_message', {'room_id': self.room_id, 'message': message})
 
     #处理视频信息
     def on_video_message(self, data):
@@ -111,8 +124,8 @@ class client:
             #判断是否为‘quit’
             if message == 'quit':
                 self.main_sio.emit('command_message', {'command': 'quit', 'room_id': self.room_id})
-            else:
-                self.main_sio.emit('chat_message', {'room_id': self.room_id, 'message': message})
+            # else:
+            #     self.main_sio.emit('chat_message', {'room_id': self.room_id, 'message': message})
             #其他的音频视频传输
 
     def run(self):
