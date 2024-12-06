@@ -1,6 +1,8 @@
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication
-from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit
+from PyQt5 import QtCore, QtGui, QtWidgets, Qt
+
+from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication,Qt
+from PyQt5.QtGui import QIcon, QCursor
+from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy
 
 
 class UI_ChatRoomWindow(object):
@@ -31,26 +33,111 @@ class UI_ChatRoomWindow(object):
         self.Room_frame.setStyleSheet(u"background-color: rgb(255, 255, 255);")
         self.Room_frame.setFrameShape(QFrame.StyledPanel)
         self.Room_frame.setFrameShadow(QFrame.Raised)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(ChatRoomWindow.sizePolicy().hasHeightForWidth())
+        ChatRoomWindow.setSizePolicy(sizePolicy)
+
+
+
+
+        # 创建并设置按钮样式
         self.Video_Button = QPushButton(self.Room_frame)
         self.Video_Button.setObjectName(u"Video_Button")
         self.Video_Button.setGeometry(QRect(20, 0, 50, 50))
+        button_style = """
+        QPushButton {
+            background-color: rgb(11, 117, 255); /* 默认背景颜色 */
+            color: rgb(255, 255, 255); /* 默认文字颜色 */
+            font: 10pt "Arial";
+            font-weight: bold;
+            border-radius: 0px; /* 设置为0px以实现方形边框 */
+            border: 1px solid rgb(0, 0, 0); /* 添加边框，颜色为黑色 */
+        }
+        QPushButton:hover {
+            background-color: rgb(0, 150, 255); /* 悬停时背景颜色 */
+        }
+        QPushButton:pressed {
+            background-color: rgb(0, 100, 200); /* 按下时背景颜色 */
+        }
+        """
+
+        self.Video_Button.setStyleSheet(button_style)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.Video_Button.sizePolicy().hasHeightForWidth())
+        self.Video_Button.setSizePolicy(sizePolicy)
+        self.Video_Button.setCursor(QCursor(Qt.ArrowCursor))
+
         self.Audio_Button = QPushButton(self.Room_frame)
         self.Audio_Button.setObjectName(u"Audio_Button")
         self.Audio_Button.setGeometry(QRect(130, 0, 50, 50))
+
+        # 设置按钮的默认样式、悬停样式和按下样式
+
+        self.Audio_Button.setStyleSheet(button_style)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.Audio_Button.sizePolicy().hasHeightForWidth())
+        self.Audio_Button.setSizePolicy(sizePolicy)
+        self.Audio_Button.setCursor(QCursor(Qt.ArrowCursor))
+
         self.Sound_Button = QPushButton(self.Room_frame)
         self.Sound_Button.setObjectName(u"Sound_Button")
         self.Sound_Button.setGeometry(QRect(240, 0, 50, 50))
+        # 设置按钮的默认样式、悬停样式和按下样式
+
+        self.Sound_Button.setStyleSheet(button_style)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.Sound_Button.sizePolicy().hasHeightForWidth())
+        self.Sound_Button.setSizePolicy(sizePolicy)
+        self.Sound_Button.setCursor(QCursor(Qt.ArrowCursor))
+
         self.Quit_Button = QPushButton(self.Room_frame)
         self.Quit_Button.setObjectName(u"Quit_Button")
         self.Quit_Button.setGeometry(QRect(670, 10, 121, 31))
-        self.Quit_Button.setAutoDefault(False)
-        self.Quit_Button.setFlat(False)
-        self.list_Button = QPushButton(self.Room_frame)
-        self.list_Button.setObjectName(u"list_Button")
-        self.list_Button.setGeometry(QRect(350, 0, 50, 50))
+        # 设置按钮的默认样式、悬停样式和按下样式
+
+        self.Quit_Button.setStyleSheet(button_style)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.Quit_Button.sizePolicy().hasHeightForWidth())
+        self.Quit_Button.setSizePolicy(sizePolicy)
+        self.Quit_Button.setCursor(QCursor(Qt.ArrowCursor))
+
         self.invite_Button = QPushButton(self.Room_frame)
         self.invite_Button.setObjectName(u"invite_Button")
         self.invite_Button.setGeometry(QRect(460, 0, 50, 50))
+        # 设置按钮的默认样式、悬停样式和按下样式
+
+
+        self.invite_Button.setStyleSheet(button_style)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.invite_Button.sizePolicy().hasHeightForWidth())
+        self.invite_Button.setSizePolicy(sizePolicy)
+        self.invite_Button.setCursor(QCursor(Qt.ArrowCursor))
+
+        self.list_Button = QPushButton(self.Room_frame)
+        self.list_Button.setObjectName(u"list_Button")
+        self.list_Button.setGeometry(QRect(350, 0, 50, 50))
+
+        # 设置按钮的默认样式、悬停样式和按下样式
+        self.list_Button.setStyleSheet(button_style)
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.list_Button.sizePolicy().hasHeightForWidth())
+        self.list_Button.setSizePolicy(sizePolicy)
+        self.list_Button.setCursor(QCursor(Qt.ArrowCursor))
+
 
         self.gridLayout.addWidget(self.Room_frame, 1, 0, 1, 2)
 
@@ -67,6 +154,8 @@ class UI_ChatRoomWindow(object):
         self.line.setGeometry(QRect(0, 450, 250, 20))
         self.line.setFrameShape(QFrame.HLine)
         self.line.setFrameShadow(QFrame.Sunken)
+
+
         self.Send_Button = QPushButton(self.chat_text)
         self.Send_Button.setObjectName(u"Send_Button")
         self.Send_Button.setGeometry(QRect(160, 560, 91, 31))

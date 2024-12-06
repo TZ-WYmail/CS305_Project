@@ -46,17 +46,46 @@ class Ui_Remote_meeting_room(object):
         self.conference_Button.setGeometry(QRect(0, 120, 100, 60))
         sizePolicy.setHeightForWidth(self.conference_Button.sizePolicy().hasHeightForWidth())
         self.conference_Button.setSizePolicy(sizePolicy)
-        self.conference_Button.setStyleSheet(u"background-color: rgb(230, 232, 235);\n"
-                                             "color: rgb(108, 108, 108);\n"
-                                             "font: 8pt \"Arial\";")
+        button_style = """
+                                                QPushButton {
+                                                    background-color: rgb(200, 200, 200); /* 默认背景颜色 */
+                                                    color: rgb(128,128,128); /* 默认文字颜色 */
+                                                    font: 10pt "Arial";
+                                                    font-weight: bold;
+                                                    border-radius: 20px; /* 圆角半径 */
+                                                    border: none; /* 无边框 */
+                                                }
+                                                QPushButton:hover {
+                                                    background-color: rgb(0, 150, 255); /* 悬停时背景颜色 */
+                                                }
+                                                QPushButton:pressed {
+                                                    background-color: rgb(0, 100, 200); /* 按下时背景颜色 */
+                                                }
+                                                """
+        self.conference_Button.setStyleSheet(button_style)
+
         self.list_Button = QPushButton(self.navigated_widget)
         self.list_Button.setObjectName(u"list_Button")
         self.list_Button.setGeometry(QRect(0, 220, 100, 60))
         sizePolicy.setHeightForWidth(self.list_Button.sizePolicy().hasHeightForWidth())
         self.list_Button.setSizePolicy(sizePolicy)
-        self.list_Button.setStyleSheet(u"background-color: rgb(230, 232, 235);\n"
-                                       "color: rgb(108, 108, 108);\n"
-                                       "font: 8pt \"Arial\";")
+        button_style_1 = """
+                                        QPushButton {
+                                            background-color: rgb(11, 117, 255); /* 默认背景颜色 */
+                                            color: rgb(255, 255, 255); /* 默认文字颜色 */
+                                            font: 10pt "Arial";
+                                            font-weight: bold;
+                                            border-radius: 20px; /* 圆角半径 */
+                                            border: none; /* 无边框 */
+                                        }
+                                        QPushButton:hover {
+                                            background-color: rgb(0, 150, 255); /* 悬停时背景颜色 */
+                                        }
+                                        QPushButton:pressed {
+                                            background-color: rgb(0, 100, 200); /* 按下时背景颜色 */
+                                        }
+                                        """
+        self.list_Button.setStyleSheet(button_style)
         self.setting_Button = QPushButton(self.navigated_widget)
         self.setting_Button.setObjectName(u"setting_Button")
         self.setting_Button.setGeometry(QRect(0, 540, 100, 60))
@@ -65,14 +94,16 @@ class Ui_Remote_meeting_room(object):
         self.setting_Button.setStyleSheet(u"background-color: rgb(230, 232, 235);\n"
                                           "color: rgb(108, 108, 108);\n"
                                           "font: 8pt \"Arial\";")
+        self.setting_Button.setStyleSheet(button_style)
         self.inform_Button = QPushButton(self.navigated_widget)
         self.inform_Button.setObjectName(u"inform_Button")
         self.inform_Button.setGeometry(QRect(0, 420, 100, 60))
         sizePolicy.setHeightForWidth(self.inform_Button.sizePolicy().hasHeightForWidth())
         self.inform_Button.setSizePolicy(sizePolicy)
-        self.inform_Button.setStyleSheet(u"background-color: rgb(230, 232, 235);\n"
-                                         "color: rgb(108, 108, 108);\n"
+        self.inform_Button.setStyleSheet(u"background-color: rgb(200, 200, 200);\n"
+                                         "color: rgb(128,128,128);\n"
                                          "font: 8pt \"Arial\";")
+        self.inform_Button.setStyleSheet(button_style)
         self.state_widget = QWidget(Remote_meeting_room)
         self.state_widget.setObjectName(u"state_widget")
         self.state_widget.setGeometry(QRect(592, 0, 760, 650))
@@ -121,6 +152,7 @@ class Ui_Remote_meeting_room(object):
         self.join_Button.setGeometry(QRect(160, 80, 160, 160))
         sizePolicy.setHeightForWidth(self.join_Button.sizePolicy().hasHeightForWidth())
         self.join_Button.setSizePolicy(sizePolicy)
+        self.join_Button.setStyleSheet(button_style)
         palette = QPalette()
         brush = QBrush(QColor(255, 255, 255, 255))
         brush.setStyle(Qt.SolidPattern)
@@ -180,6 +212,7 @@ class Ui_Remote_meeting_room(object):
         self.join_Button.setIconSize(QSize(64, 64))
         self.join_Button.setAutoDefault(False)
         self.join_Button.setFlat(False)
+        self.join_Button.setStyleSheet(button_style_1)
         self.create_Button = QPushButton(self.widget)
         self.create_Button.setObjectName(u"create_Button")
         self.create_Button.setGeometry(QRect(160, 340, 160, 160))
@@ -191,6 +224,7 @@ class Ui_Remote_meeting_room(object):
                                          "    font: 10pt \"Arial\";\n"
                                          "    font-weight: bold; /* \u8bbe\u7f6e\u5b57\u4f53\u4e3a\u52a0\u7c97 */\n"
                                          "    border-radius: 20px; /* \u8bbe\u7f6e\u5706\u89d2\u7684\u534a\u5f84\u4e3a10\u50cf\u7d20 */")
+        self.create_Button.setStyleSheet(button_style_1)
         self.label_2 = QLabel(self.widget)
         self.label_2.setObjectName(u"label_2")
         self.label_2.setGeometry(QRect(170, 250, 131, 61))
