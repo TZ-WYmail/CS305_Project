@@ -108,6 +108,7 @@ class client:
     def on_audio_message(self, data):
         print(f"{data['user']}: {data['message']}")
 
+
     #处理输入的消息
     def handle_input(self, message):
         #判断是否为指令

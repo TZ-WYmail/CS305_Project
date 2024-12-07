@@ -4,7 +4,7 @@ import socketio
 class Master_Server:
     def __init__(self):
         # 创建Socket.IO服务器实例
-        self.sio = socketio.Server(cors_allowed_origins='*')
+        self.sio = socketio.AsyncServer(cors_allowed_origins='*')
         self.app = socketio.WSGIApp(self.sio)
 
         # 指令列表
@@ -29,6 +29,21 @@ class Master_Server:
         self.sio.on('chat_message', self.handle_chat_message)
         self.sio.on('video_message', self.handle_video_message)
         self.sio.on('audio_message', self.handle_audio_message)
+    #处理offer
+    # def offer(sid, data):
+    #     print(f"Offer:{sid} {rooms[data['room']]}")
+    #     sio.emit('offer', data, room=data['room'], skip_sid=sid)
+
+    #处理answer
+    #def answer(sid, data):
+    #     print(f"Answer")
+    #     sio.emit('answer', data, room=data['room'], skip_sid=sid)
+
+    #处理p2p的candidate
+    #def ice_candidate(sid, data):
+    #     print(f"ICE candidate")
+    #     sio.emit('ice_candidate', data, room=data['room'], skip_sid=sid)
+
 
     #随机的生成一个九位数的room_id
     def generate_room_id(self):
