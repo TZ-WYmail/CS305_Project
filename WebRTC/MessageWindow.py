@@ -1,8 +1,9 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QApplication
 
-class InviteMessageWindow(QWidget):
+
+class MessageWindow(QWidget):
     def __init__(self, meeting_id, attendees, parent=None):
-        super(InviteMessageWindow, self).__init__(parent)
+        super(MessageWindow, self).__init__(parent)
         self.meeting_id = meeting_id
         self.attendees = attendees
         self.initUI()
@@ -10,7 +11,6 @@ class InviteMessageWindow(QWidget):
     def initUI(self):
         self.setWindowTitle('会议邀请')
         self.setGeometry(100, 100, 300, 200)  # 设置窗口位置和大小
-
         layout = QVBoxLayout(self)
 
         # 添加会议号标签

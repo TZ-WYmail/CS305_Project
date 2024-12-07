@@ -4,7 +4,7 @@ from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication,Qt
 from PyQt5.QtGui import QIcon, QCursor
 from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy
 
-from WebRTC.InviteMessageWindow import InviteMessageWindow
+from WebRTC.MessageWindow import MessageWindow
 from WebRTC.ListWindow import ListWindow
 
 
@@ -254,7 +254,7 @@ class UI_ChatRoomWindow(object):
         meeting_id = self.client.room_id
         attendees = self.client.member_list
         # 创建 InviteMessageWindow 实例并显示
-        self.invite_window = InviteMessageWindow(meeting_id, attendees)
+        self.invite_window = MessageWindow(meeting_id, attendees)
         self.invite_window.show()
 
 
