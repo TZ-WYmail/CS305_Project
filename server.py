@@ -19,13 +19,14 @@ async def join(sid, data):
         if room not in rooms:
             rooms[room] = set()
         if len(rooms[room]) >= 2:
-            await sio.emit('room_full', room=room)
+            await sio.emit('room_full', {'room': room}, to=sid)
             return
         await sio.enter_room(sid, room)  
         rooms[room].add(sid)
-        await sio.emit('ready', room=room)
+        await sio.emit('ready', {'room': room, 'clients': len(rooms[room])}, room=room)
     except Exception as e:
         print(f"Error in join handler: {e}")
+        await sio.emit('error', {'message': str(e)}, to=sid)
 
 @sio.event
 async def offer(sid, data):
@@ -46,6 +47,18 @@ async def ice_candidate(sid, data):
 async def message(sid, data):
     print(f"Message")
     await sio.emit('message', data, room=data['room'], skip_sid=sid)
+
+@sio.event
+async def disconnect(sid):
+    print(f"Client disconnected: {sid}")
+    # 清理房间数据
+    for room in rooms:
+        if sid in rooms[room]:
+            rooms[room].remove(sid)
+            if len(rooms[room]) == 0:
+                del rooms[room]
+            else:
+                await sio.emit('peer_disconnected', to=room)
 
 if __name__ == '__main__':
     web.run_app(app, host='0.0.0.0', port=5000)
