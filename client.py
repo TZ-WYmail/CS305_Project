@@ -57,8 +57,26 @@ class EventLoopManager:
         return self._loop
 
     def stop(self):
+        """改进的事件循环停止方法"""
         if self._loop and self._loop.is_running():
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            try:
+                # 使用异步方式停止所有任务
+                pending = asyncio.all_tasks(self._loop)
+                for task in pending:
+                    task.cancel()
+                
+                # 确保所有任务都被取消
+                self._loop.call_soon_threadsafe(lambda: [
+                    task.cancel() for task in asyncio.all_tasks(self._loop)
+                ])
+                
+                # 停止事件循环
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                
+                if threading.current_thread() != self._thread:
+                    self._thread.join(timeout=1)
+            except Exception as e:
+                print(f"停止事件循环时出错: {e}")
 
 class SocketThread(QThread):
     message_received = pyqtSignal(dict)
@@ -124,30 +142,82 @@ class VideoWidget(QWidget):
         self.update_interval = 1.0 / 60  # 60 FPS
         self._current_frame = None
         self._frame_lock = threading.Lock()
+        self.last_frame_time = time.time()
+        self.update_interval = 1.0 / 60  # 60 FPS
+        self.frame_queue = asyncio.Queue(maxsize=2)  # 添加帧缓冲队列，限制大小为2
+        self._frame_lock = threading.Lock()
+        self._current_frame = None
+        self._last_frame_time = time.time()
+        self._frame_queue = asyncio.Queue(maxsize=1)  # 限制队列大小为1
+        self._processing = False
+        self._frame_processed = threading.Event()  # 添加帧处理状态标志
+        self._closing = False
+        
+    def closeEvent(self, event):
+        self._closing = True
+        self._frame_processed.set()  # 解除帧处理等待
+        super().closeEvent(event)
+
+    async def _process_frame_queue(self):
+        while True:
+            try:
+                if not self._processing:
+                    break
+                frame = await self._frame_queue.get()
+                current_time = time.time()
+                
+                if current_time - self._last_frame_time >= self.update_interval:
+                    with self._frame_lock:
+                        self._current_frame = frame
+                    self._last_frame_time = current_time
+                    
+                    # 使用invokeMethod确保在主线程更新UI
+                    QMetaObject.invokeMethod(self.image_label, "setPixmap",
+                                           Qt.QueuedConnection,
+                                           Q_ARG(QPixmap, self._create_pixmap(frame)))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"帧处理错误: {e}")
+
+    def _create_pixmap(self, frame):
+        height, width = frame.shape[:2]
+        bytes_per_line = 3 * width
+        q_image = QImage(frame.data, width, height, 
+                        bytes_per_line, QImage.Format_RGB888)
+        return QPixmap.fromImage(q_image).scaled(
+            self.image_label.size(), 
+            Qt.KeepAspectRatio, 
+            Qt.SmoothTransformation
+        )
 
     def update_frame(self, frame):
-        if frame is None or frame.size == 0:
+        if self._closing:
             return
             
         try:
-            current_time = time.time()
-            if current_time - self.last_update < self.update_interval:
+            if frame is None or frame.size == 0:
                 return
-                
-            self.last_update = current_time
-            height, width = frame.shape[:2]
+
+            # 使用copy避免数据竞争
+            frame_copy = frame.copy()
+            height, width = frame_copy.shape[:2]
             bytes_per_line = 3 * width
-            q_image = QImage(frame.data, width, height, 
-                            bytes_per_line, QImage.Format_RGB888)
             
+            q_image = QImage(frame_copy.data, width, height,
+                           bytes_per_line, QImage.Format_RGB888)
             pixmap = QPixmap.fromImage(q_image)
-            scaled_pixmap = pixmap.scaled(self.image_label.size(), 
-                                        Qt.KeepAspectRatio, 
-                                        Qt.SmoothTransformation)
-            self.image_label.setPixmap(scaled_pixmap)
+            
+            # 使用setPixmap而不是update以减少重绘开销
+            self.image_label.setPixmap(pixmap.scaled(
+                self.image_label.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            ))
+            
+            self._frame_processed.set()
         except Exception as e:
-            print(f"帧更新失败: {e}")
-            traceback.print_exc()
+            print(f"帧更新错误: {e}")
 
 class DummyVideoTrack(MediaStreamTrack):
     kind = "video"
@@ -279,20 +349,91 @@ class SwitchableVideoTrack(MediaStreamTrack):
         self.running = False
 
 class SwitchableAudioTrack(AudioStreamTrack):
-    kind = "audio"
-    
     def __init__(self):
         super().__init__()
         self.enabled = False
+        self._audio_device = None
+        self._stream = None
+        self._running = True
+        self._lock = threading.Lock()
         
     async def recv(self):
-        frame = await super().recv()
-        if not self.enabled:
-            frame.planes[0].update(bytes(len(frame.planes[0])))
-        return frame
-        
+        try:
+            if not self._running:
+                raise MediaStreamError("Audio track stopped")
+                
+            frame = await super().recv()
+            
+            with self._lock:
+                if not self.enabled:
+                    # 静音处理
+                    frame.planes[0].update(bytes(len(frame.planes[0])))
+                elif self._stream:
+                    # 从麦克风获取音频数据
+                    try:
+                        audio_data = await self._get_audio_data()
+                        if audio_data:
+                            frame.planes[0].update(audio_data)
+                    except Exception as e:
+                        print(f"获取音频数据失败: {e}")
+                        
+            return frame
+            
+        except Exception as e:
+            print(f"音频处理错误: {e}")
+            return await super().recv()
+            
     def switch(self, enabled):
-        self.enabled = enabled
+        """改进的音频开关控制"""
+        with self._lock:
+            self.enabled = enabled
+            if enabled:
+                self._init_audio_device()
+            else:
+                self._cleanup_audio_device()
+                
+    def _init_audio_device(self):
+        """初始化音频设备"""
+        try:
+            import sounddevice as sd
+            if not self._audio_device:
+                self._audio_device = sd.InputStream(
+                    channels=1,
+                    samplerate=48000,
+                    dtype='int16',
+                    blocksize=960  # 20ms @ 48kHz
+                )
+                self._audio_device.start()
+        except Exception as e:
+            print(f"初始化音频设备失败: {e}")
+            
+    def _cleanup_audio_device(self):
+        """清理音频设备资源"""
+        if self._audio_device:
+            try:
+                self._audio_device.stop()
+                self._audio_device.close()
+                self._audio_device = None
+            except Exception as e:
+                print(f"清理音频设备失败: {e}")
+                
+    async def _get_audio_data(self):
+        """获取音频数据"""
+        if not self._audio_device:
+            return None
+            
+        try:
+            data, _ = self._audio_device.read(960)
+            return data.tobytes()
+        except Exception as e:
+            print(f"读取音频数据失败: {e}")
+            return None
+            
+    def stop(self):
+        """停止音频轨道"""
+        self._running = False
+        self._cleanup_audio_device()
+
 class VideoUpdateThread(QThread):
     frame_ready = pyqtSignal(np.ndarray)
     fps_updated = pyqtSignal(int)
@@ -306,70 +447,79 @@ class VideoUpdateThread(QThread):
         self.frame_count = 0
         self.last_frame_time = time.time()
         self._fps = 0
+        self._last_fps_update = time.time()  # 添加这一行
         self.target_fps = 60  # 统一限制为60fps
         self.frame_interval = 1.0 / 60  # 确保60fps的帧间隔
         self.loop = parent_loop if parent_loop else EventLoopManager.instance().get_loop()
+        self.frame_buffer = asyncio.Queue(maxsize=2)  # 添加帧缓冲区
+        self.frame_drop_count = 0  # 用于统计丢帧数量
+        self._frame_pool = []
+        self._pool_size = 2
+        self._pool_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._frame_queue = asyncio.Queue(maxsize=1)
+
+    def _get_frame_from_pool(self):
+        with self._pool_lock:
+            if not self._frame_pool:
+                return np.zeros((480, 640, 3), dtype=np.uint8)
+            return self._frame_pool.pop()
+
+    def _return_frame_to_pool(self, frame):
+        with self._pool_lock:
+            if len(self._frame_pool) < self._pool_size:
+                self._frame_pool.append(frame)
 
     async def receive_frames(self):
-        if self.is_remote:
-            print("远程视频: 开始接收帧...")
-            
+        last_gc_time = time.time()
+        frame_buffer = None
+        
         try:
-            # 视频轨道队列处理
-            if hasattr(self.video_track, '_queue'):
-                old_queue = self.video_track._queue
-                new_queue = asyncio.Queue()
-                
-                try:
-                    while not old_queue.empty():
-                        item = await old_queue.get()
-                        await new_queue.put(item)
-                except Exception as e:
-                    print(f"队列迁移错误: {e}")
-                    
-                self.video_track._queue = new_queue
-
-            last_frame_time = time.time()
-
             while self.running:
-                try:
-                    # 精确的帧率控制
-                    current_time = time.time()
-                    elapsed = current_time - last_frame_time
-                    
-                    if elapsed < self.frame_interval:
-                        await asyncio.sleep(self.frame_interval - elapsed)
-                        continue
+                current_time = time.time()
+                
+                # 周期性触发GC
+                if current_time - last_gc_time > 30:  # 每30秒
+                    gc.collect()
+                    last_gc_time = current_time
+                
+                if current_time - self.last_frame_time < self.frame_interval:
+                    await asyncio.sleep(0.001)
+                    continue
 
+                try:
                     frame = await self.video_track.recv()
                     if not frame:
-                        await asyncio.sleep(0.001)
                         continue
 
-                    img = frame.to_ndarray(format="bgr24")
-                    if img is not None and img.size > 0:
-                        self.frame_ready.emit(img)
+                    # 重用帧缓冲
+                    if frame_buffer is None:
+                        frame_buffer = self._get_frame_from_pool()
+                    
+                    # 转换帧
+                    frame_data = frame.to_ndarray(format="bgr24")
+                    np.copyto(frame_buffer, frame_data)
+                    
+                    self.frame_ready.emit(frame_buffer)
+                    self.last_frame_time = current_time
+                    
+                    # 更新FPS
+                    self.frame_count += 1
+                    if current_time - self._last_fps_update >= 1.0:
+                        self._fps = self.frame_count
+                        self.fps_updated.emit(self._fps)
+                        self.frame_count = 0
+                        self._last_fps_update = current_time
                         
-                        # 更新FPS
-                        self.frame_count += 1
-                        if current_time - self.last_frame_time >= 1.0:
-                            self._fps = int(self.frame_count / (current_time - self.last_frame_time))
-                            self.fps_updated.emit(self._fps)
-                            self.frame_count = 0
-                            self.last_frame_time = current_time
-
-                    last_frame_time = current_time
-
+                except MediaStreamError:
+                    break
                 except Exception as e:
-                    if self.is_remote:
-                        print(f"帧处理错误: {e}")
-                    self.error_occurred.emit(str(e))
+                    print(f"帧处理错误: {e}")
                     await asyncio.sleep(0.1)
-
-        except Exception as e:
-            if self.is_remote:
-                print(f"视频接收循环错误: {e}")
-            self.error_occurred.emit(str(e))
+                    
+        finally:
+            if frame_buffer is not None:
+                self._return_frame_to_pool(frame_buffer)
 
     def run(self):
         """QThread的运行方法"""
@@ -386,8 +536,30 @@ class VideoUpdateThread(QThread):
             self.error_occurred.emit(str(e))
 
     def stop(self):
-        """安全停止线程"""
-        self.running = False
+        """改进的线程停止方法"""
+        self._stop_event.set()
+        self.quit()  # 请求退出事件循环
+        self.wait(1000)  # 等待最多1秒
+        if self.isRunning():
+            self.terminate()  # 强制终止
+            self.wait(500)  # 再等待0.5秒确保结束
+
+    async def process_frame(self):
+        while not self._stop_event.is_set():
+            try:
+                # 使用timeout避免永久阻塞
+                frame = await asyncio.wait_for(self.video_track.recv(), timeout=1.0)
+                if self._frame_queue.full():
+                    try:
+                        self._frame_queue.get_nowait()  # 丢弃旧帧
+                    except asyncio.QueueEmpty:
+                        pass
+                await self._frame_queue.put(frame)
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                print(f"帧处理错误: {e}")
+                await asyncio.sleep(0.1)
 
 class WebRTCManager:
     def __init__(self, loop):
@@ -596,26 +768,115 @@ class WebRTCClient(QMainWindow):
         self.media_manager.create_tracks()
         self.setup_default_tracks()
         self.start_local_preview()
+        self._cleanup_lock = threading.Lock()
+        self._is_closing = False
+        self._shutdown_event = threading.Event()
 
     def closeEvent(self, event):
-        """简化的关闭处理"""
+        """完全重写的关闭事件处理"""
+        if self._is_closing:
+            event.accept()
+            return
+            
+        self._is_closing = True
+        
         try:
-            if self.remote_video_thread:
-                self.remote_video_thread.stop()
-                self.remote_video_thread.wait()
-                
-            if self.video_thread:
-                self.video_thread.stop()
-                self.video_thread.wait()
-                
-            if hasattr(self, 'media_manager'):
-                self.media_manager.stop_all()
-                
+            # 1. 首先断开所有信号连接
+            self.disconnect_all_signals()
+            
+            # 2. 停止视频相关线程
+            self.stop_video_threads()
+            
+            # 3. 清理WebRTC连接
+            self.cleanup_webrtc()
+            
+            # 4. 停止媒体管理器
+            self.cleanup_media_manager()
+            
+            # 5. 最后停止事件循环
+            self.stop_event_loop()
+            
         except Exception as e:
             print(f"关闭时发生错误: {e}")
+            traceback.print_exc()
         finally:
+            self._is_closing = False
             event.accept()
-            QApplication.quit()
+            # 使用单独的线程确保应用程序退出
+            threading.Thread(target=self.force_quit).start()
+
+    def disconnect_all_signals(self):
+        """断开所有信号连接"""
+        try:
+            if hasattr(self, 'socket_thread'):
+                self.socket_thread.message_received.disconnect()
+                self.socket_thread.ready_signal.disconnect()
+                self.socket_thread.offer_received.disconnect()
+                self.socket_thread.answer_received.disconnect()
+                self.socket_thread.candidate_received.disconnect()
+        except Exception as e:
+            print(f"断开信号连接时出错: {e}")
+
+    def stop_video_threads(self):
+        """停止所有视频相关线程"""
+        threads = [
+            ('video_thread', self.video_thread),
+            ('remote_video_thread', self.remote_video_thread)
+        ]
+        
+        for name, thread in threads:
+            if thread:
+                try:
+                    print(f"正在停止 {name}...")
+                    thread.stop()
+                    thread.wait(1000)
+                    if thread.isRunning():
+                        thread.terminate()
+                        thread.wait(500)
+                except Exception as e:
+                    print(f"停止 {name} 时出错: {e}")
+
+    def cleanup_webrtc(self):
+        """清理WebRTC连接"""
+        if hasattr(self, 'webrtc') and self.webrtc and self.webrtc.pc:
+            try:
+                future = asyncio.run_coroutine_threadsafe(
+                    self.webrtc.close_connection(),
+                    self.loop
+                )
+                future.result(timeout=1)
+            except Exception as e:
+                print(f"清理WebRTC连接时出错: {e}")
+
+    def cleanup_media_manager(self):
+        """清理媒体管理器"""
+        if hasattr(self, 'media_manager'):
+            try:
+                self.media_manager.stop_all()
+                self.cleanup_audio()
+            except Exception as e:
+                print(f"清理媒体管理器时出错: {e}")
+
+    def stop_event_loop(self):
+        """停止事件循环"""
+        if hasattr(self, 'loop_manager'):
+            try:
+                self.loop_manager.stop()
+            except Exception as e:
+                print(f"停止事件循环��出错: {e}")
+
+    def force_quit(self):
+        """强制退出应用程序"""
+        try:
+            time.sleep(0.5)  # 给予清理过程一些时间
+            os._exit(0)  # 强制终止进程
+        except:
+            sys.exit(1)
+
+    def __del__(self):
+        """优化析构函数"""
+        if not self._is_closing:
+            self.closeEvent(None)
 
     def setup_default_tracks(self):
         """初始化默认的媒体轨道（黑屏和静音）"""
@@ -671,7 +932,7 @@ class WebRTCClient(QMainWindow):
                 
         except Exception as e:
             print(f"启动远程视频流失败: {e}")
-            traceback.print_exc()
+            traceback.print.exc()
     
     def _on_remote_video_finished(self):
         print("远程视频线程已结束")
@@ -911,7 +1172,7 @@ class WebRTCClient(QMainWindow):
         except Exception as e:
             print(f"处理offer失败: {e}")
             print(f"当前信令状态: {self.pc.signalingState if self.pc else 'None'}")
-            traceback.print_exc()
+            traceback.print.exc()
             raise e
 
     async def setup_media_tracks(self):
@@ -934,8 +1195,6 @@ class WebRTCClient(QMainWindow):
                 print("正在添加音频轨道...")
                 self.webrtc.pc.addTrack(self.audio_track)
                 needs_negotiation = True
-                
-            # 如果添加了新轨道，进行一次性协商
             if needs_negotiation:
                 print("开始媒体协商...")
                 await self.webrtc.pc.setLocalDescription(await self.webrtc.pc.createOffer())
@@ -943,7 +1202,7 @@ class WebRTCClient(QMainWindow):
                 
         except Exception as e:
             print(f"设置媒体轨道失败: {e}")
-            traceback.print_exc()
+            traceback.print.exc()
 
     def on_answer(self, data):
         """统一的answer处理方法"""
@@ -965,15 +1224,28 @@ class WebRTCClient(QMainWindow):
                 self.video_button.setText('关闭视频' if self.local_video_enabled else '开启视频')
         except Exception as e:
             print(f"视频切换失败: {e}")
-            traceback.print_exc()
+            traceback.print.exc()
 
     def toggle_audio(self):
+        """改进的音频切换处理"""
         try:
             self.is_audio_enabled = not self.is_audio_enabled
-            if hasattr(self.media_manager, 'toggle_audio'):
+            if hasattr(self, 'media_manager'):
                 self.media_manager.toggle_audio(self.is_audio_enabled)
+                
+                # 更新UI状态
                 self.audio_button.setText('关闭音频' if self.is_audio_enabled else '开启音频')
-            print(f"音频已{'开启' if self.is_audio_enabled else '关闭'}")
+                self.audio_button.setStyleSheet(
+                    'background-color: #ff6b6b;' if self.is_audio_enabled else ''
+                )
+                
+                # 处理音频设备
+                if self.is_audio_enabled:
+                    self.setup_audio_handling()
+                else:
+                    self.cleanup_audio()
+                    
+                print(f"音频已{'开启' if self.is_audio_enabled else '关闭'}")
         except Exception as e:
             print(f"音频切换失败: {e}")
             traceback.print_exc()
@@ -988,10 +1260,66 @@ class WebRTCClient(QMainWindow):
             self.pc.addTrack(self.audio_track)
 
     def start_remote_audio(self):
-        """占位用的远程音频处理函数"""
+        """改进的远程音频启动"""
         if self.remote_audio:
-            print("收到远程音频轨道")
+            try:
+                print("开始处理远程音频轨道")
+                self.remote_audio_enabled = True
+                self.handle_remote_audio(self.remote_audio)
+            except Exception as e:
+                print(f"启动远程音频失败: {e}")
+                traceback.print_exc()
 
+    def setup_audio_handling(self):
+        """设置音频处理"""
+        self.audio_enabled = False
+        self.remote_audio_enabled = False
+        self.audio_output = None
+        try:
+            import sounddevice as sd
+            self.audio_output = sd.OutputStream(
+                channels=1,
+                samplerate=48000,
+                dtype='int16'
+            )
+            self.audio_output.start()
+        except Exception as e:
+            print(f"初始化音频输出失败: {e}")
+
+    def cleanup_audio(self):
+        """清理音频资源"""
+        try:
+            if self.audio_output:
+                self.audio_output.stop()
+                self.audio_output.close()
+                self.audio_output = None
+        except Exception as e:
+            print(f"清理音频资源失败: {e}")
+
+    def handle_remote_audio(self, audio_track):
+        """处理远程音频"""
+        try:
+            if not self.audio_output:
+                self.setup_audio_handling()
+                
+            async def process_remote_audio():
+                while True:
+                    try:
+                        frame = await audio_track.recv()
+                        if self.audio_output and self.remote_audio_enabled:
+                            self.audio_output.write(frame.to_ndarray())
+                    except MediaStreamError:
+                        break
+                    except Exception as e:
+                        print(f"处理远程音频失败: {e}")
+                        await asyncio.sleep(0.1)
+                        
+            asyncio.run_coroutine_threadsafe(
+                process_remote_audio(),
+                self.loop
+            )
+        except Exception as e:
+            print(f"启动远程音频处理失败: {e}")
 
     def on_ice_candidate(self, data):
         """统一的ICE candidate处理方法"""
@@ -1013,23 +1341,6 @@ class WebRTCClient(QMainWindow):
             'room': self.room_input.text(),
             'candidate': candidate_dict
         })
-
-    def update_video_frame(self, frame):
-        """优化的视频帧更新"""
-        if frame is None or frame.size == 0:
-            return
-            
-        try:
-            current_time = time.time()
-            if current_time - self._last_frame_update < 0.033:  # ~30fps
-                return
-                
-            self.local_video_widget.update_frame(frame)
-            self._last_frame_update = current_time
-            self.frame_count += 1
-            
-        except Exception as e:
-            print(f"更新视频帧失败: {e}")
 
     def closeEvent(self, event):
         try:
@@ -1061,6 +1372,42 @@ class WebRTCClient(QMainWindow):
         except:
             pass
      
+    def clean_up_resources(self):
+        with self._cleanup_lock:
+            if self._is_closing:
+                return
+            self._is_closing = True
+            
+            try:
+                # 停止视频处理
+                if self.video_thread:
+                    self.video_thread.stop()
+                    self.video_thread.wait(1000)
+                
+                if self.remote_video_thread:
+                    self.remote_video_thread.stop()
+                    self.remote_video_thread.wait(1000)
+                
+                # 关闭WebRTC连接
+                if self.webrtc and self.webrtc.pc:
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.webrtc.close_connection(),
+                        self.loop
+                    )
+                    future.result(timeout=5)
+                
+                # 停止媒体轨道
+                if hasattr(self, 'media_manager'):
+                    self.media_manager.stop_all()
+                
+                # 清理事件循环
+                if self.loop and not self.loop.is_closed():
+                    self.loop.call_soon_threadsafe(self.loop.stop)
+                    
+            except Exception as e:
+                print(f"清理资源时发生错误: {e}")
+            finally:
+                self._is_closing = False
 
     def send_message(self):
         """发送聊天消息"""
@@ -1111,7 +1458,7 @@ class WebRTCClient(QMainWindow):
             future.result(timeout=10)
         except Exception as e:
             print(f"处理 offer 失败: {e}")
-            traceback.print_exc()
+            traceback.print.exc()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

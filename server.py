@@ -59,7 +59,7 @@ async def disconnect(sid):
                 del rooms[room]
             else:
                 await sio.emit('peer_disconnected', to=room)
-            break  # 假设一个客户端只能在一个房间中
+            break  
 
 if __name__ == '__main__':
     web.run_app(app, host='0.0.0.0', port=5000)
