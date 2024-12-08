@@ -51,14 +51,15 @@ async def message(sid, data):
 @sio.event
 async def disconnect(sid):
     print(f"Client disconnected: {sid}")
-    # 清理房间数据
-    for room in rooms:
+    rooms_to_check = list(rooms.keys())
+    for room in rooms_to_check:
         if sid in rooms[room]:
             rooms[room].remove(sid)
             if len(rooms[room]) == 0:
                 del rooms[room]
             else:
                 await sio.emit('peer_disconnected', to=room)
+            break  # 假设一个客户端只能在一个房间中
 
 if __name__ == '__main__':
     web.run_app(app, host='0.0.0.0', port=5000)
