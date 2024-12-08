@@ -751,19 +751,12 @@ class WebRTCClient(QMainWindow):
                 def on_track(track):
                     print(f"收到新轨道: {track.kind}")
                     if track.kind == "video":
-                        print("处理视频轨道...")
-                        print(f"轨道状态: {track.readyState if hasattr(track, 'readyState') else 'unknown'}")
-                        print(f"轨道ID: {track.id if hasattr(track, 'id') else 'unknown'}")
-                        
-                        # 测试轨道是否可以接收
                         async def test_track():
                             try:
                                 test_frame = await track.recv()
                                 print(f"测试帧接收成功: {test_frame is not None}")
                             except Exception as e:
                                 print(f"测试帧接收失败: {e}")
-                        
-                        # 执行测试
                         asyncio.run_coroutine_threadsafe(test_track(), self.loop)
                         
                         self.remote_video = track
@@ -924,16 +917,6 @@ class WebRTCClient(QMainWindow):
         if self.remote_audio:
             print("收到远程音频轨道")
 
-    def on_answer(self, data):
-        """统一的answer处理方法"""
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self.webrtc.handle_remote_description(data['sdp'], 'answer'),
-                self.loop
-            )
-            print("Answer processed successfully")
-        except Exception as e:
-            print(f"处理 answer 失败: {e}")
 
     def on_ice_candidate(self, data):
         """统一的ICE candidate处理方法"""
