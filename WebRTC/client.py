@@ -132,7 +132,6 @@ class client:
     def run(self):
         self.main_sio.connect('http://localhost:5000')
         threading.Thread(target=self.main_sio.wait, daemon=True).start()
-
         # try:
         #     while True:
         #         message = input("请输入消息: ")
