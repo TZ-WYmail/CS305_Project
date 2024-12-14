@@ -3,6 +3,8 @@ from aiohttp import web
 import asyncio
 
 is_p2p = False
+
+
 class Master_Server:
     def __init__(self):
         # 创建异步Socket.IO服务器实例
@@ -65,8 +67,9 @@ class Master_Server:
                 for user in self.rooms[room_id]['users']:
                     await self.sio.leave_room(user, room_id)
                     await self.sio.emit('system_notification', {'user': user, 'timestamp': self.get_timestamp(),
-                                                          'message': user + ' 取消了会议'}, room=user)
-                    await self.sio.emit('command_message', {'user': user, 'command': 'quit', 'room_id': room_id}, room=user)
+                                                                'message': user + ' 取消了会议'}, room=user)
+                    await self.sio.emit('command_message', {'user': user, 'command': 'quit', 'room_id': room_id},
+                                        room=user)
                 del self.rooms[room_id]  # 删除房间
             else:
                 # 如果用户不是房间的host，仅将用户从房间中移除
@@ -76,17 +79,18 @@ class Master_Server:
                     for user in self.rooms[room_id]['users']:
                         if user != sid:
                             await self.sio.emit('system_notification',
-                                          {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
-                                           'message': user + ' 断开了连接', 'members': self.rooms[room_id]['users']},
-                                          room=user)
+                                                {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
+                                                 'message': user + ' 断开了连接',
+                                                 'members': self.rooms[room_id]['users']},
+                                                room=user)
 
     #服务器交互事件实现
     #文本消息处理
     async def handle_connect_message(self, sid, data):
         print(f"用户 {sid} 发送消息: {data['message']}")
-        await self.sio.emit('connect_message', 
-            {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
-            room=sid)
+        await self.sio.emit('connect_message',
+                            {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
+                            room=sid)
 
     #命令消息处理
     async def handle_command_message(self, sid, data):
@@ -97,17 +101,19 @@ class Master_Server:
             room_id = self.generate_room_id()
             if room_id in self.rooms:
                 await self.sio.emit('error_message',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间已存在'}, room=room_id)
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间已存在'},
+                                    room=room_id)
             else:
                 self.rooms[room_id] = {'host': sid, 'users': [sid]}
                 await self.sio.enter_room(sid, room_id)
                 await self.sio.emit('command_message',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'create', 'room_id': room_id},
-                              room=sid)
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'create',
+                                     'room_id': room_id},
+                                    room=sid)
                 await self.sio.emit('system_notification',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'list',
-                               'message': sid + '创建了房间', 'members': self.rooms[room_id]['users']},
-                              room=sid)
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'list',
+                                     'message': sid + '创建了房间', 'members': self.rooms[room_id]['users']},
+                                    room=sid)
 
         elif command == 'join':
             room_id = data['room_id']
@@ -116,17 +122,18 @@ class Master_Server:
                 await self.sio.enter_room(sid, room_id)
                 #告知该用户加入成功
                 await self.sio.emit('command_message',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'join', 'room_id': room_id},
-                              room=sid)
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'join',
+                                     'room_id': room_id},
+                                    room=sid)
                 #告知该房间的其他用户，这个用户加入了房间
                 for user in self.rooms[room_id]['users']:
                     await self.sio.emit('system_notification',
-                                  {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
-                                   'message': sid + '加入了房间', 'members': self.rooms[room_id]['users']},
-                                  room=user)
+                                        {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
+                                         'message': sid + '加入了房间', 'members': self.rooms[room_id]['users']},
+                                        room=user)
             else:
                 await self.sio.emit('error_message',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
 
         elif command == 'quit':
             room_id = data['room_id']
@@ -137,68 +144,75 @@ class Master_Server:
                         await self.sio.leave_room(user, room_id)
                         # 告诉房间内的人退出消息
                         await self.sio.emit('system_notification', {'user': user, 'timestamp': self.get_timestamp(),
-                                                              'message': sid + ' 取消了会议'},room=user)
+                                                                    'message': sid + ' 取消了会议'}, room=user)
                         await self.sio.emit('command_message',
-                                      {'user': user, 'timestamp': self.get_timestamp(), 'command': 'quit',
-                                       'room_id': room_id},
-                                      room=user)
+                                            {'user': user, 'timestamp': self.get_timestamp(), 'command': 'quit',
+                                             'room_id': room_id},
+                                            room=user)
                     del self.rooms[room_id]
                 else:
                     self.rooms[room_id]['users'].remove(sid)
                     await self.sio.leave_room(sid, room_id)
                     await self.sio.emit('command_message',
-                                  {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'quit', 'room_id': room_id},
-                                  room=sid)
+                                        {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'quit',
+                                         'room_id': room_id},
+                                        room=sid)
                     #告诉房间内的其他人退出消息
                     for user in self.rooms[room_id]['users']:
                         if user != sid:
                             await self.sio.emit('system_notification',
-                                          {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
-                                           'message': sid + ' 离开了房间', 'members': self.rooms[room_id]['users']},
-                                          room=user)
+                                                {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
+                                                 'message': sid + ' 离开了房间',
+                                                 'members': self.rooms[room_id]['users']},
+                                                room=user)
             else:
                 await self.sio.emit('error_message',
-                              {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
 
         elif command == 'list':  #返回给查询的那个用户
             room_list = list(self.rooms.keys())
             await self.sio.emit('command_message',
-                          {'user': sid, 'command': 'list', 'timestamp': self.get_timestamp(), 'message': room_list},
-                          room=sid)
+                                {'user': sid, 'command': 'list', 'timestamp': self.get_timestamp(),
+                                 'message': room_list},
+                                room=sid)
 
         elif command == 'help':
             help_message = '可用命令:\n'
             for cmd, desc in self.commands.items():
                 help_message += f'{cmd}: {desc}\n'
             await self.sio.emit('command_message',
-                          {'user': sid, 'command': 'help', 'timestamp': self.get_timestamp(), 'message': help_message},
-                          room=sid)
+                                {'user': sid, 'command': 'help', 'timestamp': self.get_timestamp(),
+                                 'message': help_message},
+                                room=sid)
 
     #聊天事件实现
     async def handle_chat_message(self, sid, data):
-        print(f"用户 {sid} 发送消息: {data['message']}")
+        print(f"用户 {sid} 发送消息: {data['chat_message']}")
         # 广播消息给所在房间的全体用户
         for user in self.rooms[data['room_id']]['users']:
-            await self.sio.emit('chat_message', {'user': sid, 'timestamp': self.get_timestamp(),'message': data['message']},
-                          room=user)
+            await self.sio.emit('chat_message',
+                                {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
+                                room=user)
 
     async def handle_video_message(self, sid, data):
-        print(f"用户 {sid} 发送视频: {data['message']}")
         # 广播消息给所有用户
         for user in self.rooms[data['room_id']]['users']:
-            await self.sio.emit('video_message', {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
-                          room=user)
+            await self.sio.emit('video_message', {'user': sid, 'timestamp': self.get_timestamp(),
+                                                  'video_message': data['video_message']},
+                                room=user)
 
     async def handle_audio_message(self, sid, data):
-        print(f"用户 {sid} 发送音频: {data['message']}")
+        print(f"用户 {sid} 发送音频: {data['audio_message']}")
         # 广播消息给所有用户
         for user in self.rooms[data['room_id']]['users']:
-            await self.sio.emit('audio_message', {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
-                          room=user)
-    
+            await self.sio.emit('audio_message',
+                                {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['audio_message']},
+                                room=user)
+
     '''p2p'''
+
     # 处理offer
-    async def offer(self,sid, data):
+    async def offer(self, sid, data):
         print(f'Offer')
         for room_id in list(self.rooms.keys()):
             if self.rooms[room_id]['host'] == sid:
@@ -206,7 +220,7 @@ class Master_Server:
                     await self.sio.emit('offer', data, room=user)
 
     # 处理answer
-    async def answer(self,sid, data):
+    async def answer(self, sid, data):
         print(f"Answer")
         for room_id in list(self.rooms.keys()):
             if self.rooms[room_id]['host'] == sid:

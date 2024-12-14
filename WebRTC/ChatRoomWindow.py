@@ -1,8 +1,12 @@
+import threading
+
+import cv2
+import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets, Qt
 
-from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication,Qt
-from PyQt5.QtGui import QIcon, QCursor
-from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy
+from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication, Qt
+from PyQt5.QtGui import QIcon, QCursor, QPixmap, QImage
+from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy, QLabel
 
 from WebRTC.MessageWindow import MessageWindow
 from WebRTC.ListWindow import ListWindow
@@ -13,6 +17,10 @@ class UI_ChatRoomWindow(object):
         self.MainWindow = MainWindow
         self.client = MainWindow.client
         self.client.ChatRoomWindow = ChatRoomWindow
+
+        self.is_video = False
+        self.is_audio = False
+
         ChatRoomWindow.setObjectName("ChatRoomWindow")
         ChatRoomWindow.resize(1100, 639)
         if not ChatRoomWindow.objectName():
@@ -30,6 +38,19 @@ class UI_ChatRoomWindow(object):
 
         self.gridLayout.addWidget(self.frame_video, 0, 0, 1, 1)
 
+        self.videoLayout = QGridLayout(self.frame_video)  # 创建九宫格布局
+        self.videoLayout.setObjectName(u"videoLayout")
+        self.videoLayout.setContentsMargins(0, 0, 0, 0)
+        self.videoLayout.setSpacing(5)  # 设置网格间距为0
+        self.videoLabels = []
+
+        # 创建9个QLabel用于显示视频帧
+        for i in range(3):
+            for j in range(3):
+                self.videoLabels.append(QLabel(self.frame_video))
+                self.videoLabels[-1].setObjectName(u"videoLabel")
+                self.videoLayout.addWidget(self.videoLabels[-1], i, j)
+
         self.Room_frame = QFrame(ChatRoomWindow)
         self.Room_frame.setObjectName(u"Room_frame")
         self.Room_frame.setMaximumSize(QSize(16777215, 50))
@@ -41,9 +62,6 @@ class UI_ChatRoomWindow(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(ChatRoomWindow.sizePolicy().hasHeightForWidth())
         ChatRoomWindow.setSizePolicy(sizePolicy)
-
-
-
 
         # 创建并设置按钮样式
         self.Video_Button = QPushButton(self.Room_frame)
@@ -119,7 +137,6 @@ class UI_ChatRoomWindow(object):
         self.invite_Button.setGeometry(QRect(460, 0, 50, 50))
         # 设置按钮的默认样式、悬停样式和按下样式
 
-
         self.invite_Button.setStyleSheet(button_style)
         sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(0)
@@ -141,7 +158,6 @@ class UI_ChatRoomWindow(object):
         self.list_Button.setSizePolicy(sizePolicy)
         self.list_Button.setCursor(QCursor(Qt.ArrowCursor))
 
-
         self.gridLayout.addWidget(self.Room_frame, 1, 0, 1, 2)
 
         self.chat_text = QFrame(ChatRoomWindow)
@@ -158,7 +174,6 @@ class UI_ChatRoomWindow(object):
         self.line.setFrameShape(QFrame.HLine)
         self.line.setFrameShadow(QFrame.Sunken)
 
-
         self.Send_Button = QPushButton(self.chat_text)
         self.Send_Button.setObjectName(u"Send_Button")
         self.Send_Button.setGeometry(QRect(160, 560, 91, 31))
@@ -171,10 +186,9 @@ class UI_ChatRoomWindow(object):
         self.Clear_Button.setObjectName(u"Clear_Button")
         self.Clear_Button.setGeometry(QRect(0, 560, 91, 31))
         self.Clear_Button.setStyleSheet(u"QPushButton{\n"
-                                       "	background-color:rgb(0, 0, 0)\n"
-                                       "	color: rgb(0, 0, 127);\n"
-                                       "}")
-
+                                        "	background-color:rgb(0, 0, 0)\n"
+                                        "	color: rgb(0, 0, 127);\n"
+                                        "}")
 
         self.message_in = QTextEdit(self.chat_text)
         self.message_in.setObjectName(u"message_in")
@@ -213,11 +227,11 @@ class UI_ChatRoomWindow(object):
                                                            "</style></head><body style=\" font-family:'SimSun'; font-size:9pt; font-weight:400; font-style:normal;\">\n"
                                                            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">\u8bf7\u8f93\u5165\u6587\u672c\u4fe1\u606f...</p></body></html>",
                                                            None))
+
     # retranslateUi
 
-
     def set_button(self):
-        # self.Video_Button.clicked.connect(self.show_video)
+        self.Video_Button.clicked.connect(self.send_video_message)
         # self.Audio_Button.clicked.connect(self.show_audio)
         # self.Sound_Button.clicked.connect(self.show_sound)
         self.Quit_Button.clicked.connect(self.quit_meeting)
@@ -234,7 +248,7 @@ class UI_ChatRoomWindow(object):
         self.message_output.append(message)
 
     def send_chat_message(self):
-        message=self.message_in.toPlainText()
+        message = self.message_in.toPlainText()
         self.message_in.clear()
         self.client.send_chat_message(message)
 
@@ -257,8 +271,44 @@ class UI_ChatRoomWindow(object):
         self.invite_window = MessageWindow(meeting_id, attendees)
         self.invite_window.show()
 
+    def send_video_message(self):
+        if not self.is_video:
+            self.is_video = True
+            threading.Thread(target=self.capture_and_send).start()
+        else:
+            self.is_video = False
 
+    def capture_and_send(self):
+        cap = cv2.VideoCapture(0)
+        while self.is_video:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            ret, jpeg = cv2.imencode('.jpg', frame)
+            if ret:
+                self.client.send_video_message(jpeg.tobytes())
+        cap.release()
+        # 在线程结束后发送 black.jpg
+        self.send_black_frame()
 
+    def send_black_frame(self):
+        # 加载一张黑色的图片
+        black_image = np.zeros((480, 640, 3), dtype=np.uint8)  # 假设图片大小为 640x480
+        ret, jpeg = cv2.imencode('.jpg', black_image)
+        if ret:
+            self.client.send_video_message(jpeg.tobytes())
 
+    def convert_cv_qt(self, frame_data):
+        jpg = np.frombuffer(frame_data, dtype=np.uint8)
+        image = cv2.imdecode(jpg, cv2.IMREAD_COLOR)
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb_image.shape
+        bytes_per_line = ch * w
+        convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        p = convert_to_Qt_format.scaled(self.videoLabels[0].width(), self.videoLabels[0].height(), Qt.KeepAspectRatio)
+        return p
 
-
+    def show_video_message(self, index, video_message):
+        image = self.convert_cv_qt(video_message)
+        self.videoLabels[index].setPixmap(QPixmap.fromImage(image))

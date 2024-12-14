@@ -1,4 +1,6 @@
 import sys
+
+import cv2
 import socketio
 import threading
 
@@ -98,11 +100,24 @@ class client:
         self.UI_ChatRoomWindow.show_chat_message('<<' + data['timestamp'] + '>>' + data['user'] + ':' + data['message'])
 
     def send_chat_message(self, message):
-        self.main_sio.emit('chat_message', {'room_id': self.room_id, 'message': message})
+        self.main_sio.emit('chat_message', {'room_id': self.room_id, 'chat_message': message})
 
-    #处理视频信息
     def on_video_message(self, data):
-        print(f"{data['user']}: {data['message']}")
+        sid=data['user']
+        index=0
+        count=-1
+        for member in self.member_list:
+            count+=1
+            if member == sid:
+                index = count
+        self.UI_ChatRoomWindow.show_video_message(index, data['video_message'])
+
+    def send_video_message(self,video_message):
+        self.main_sio.emit('video_message', {'room_id': self.room_id, 'video_message': video_message})
+
+    def send_audio_message(self,audio_message):
+        self.main_sio.emit('audio_message', {'room_id': self.room_id, 'audio_message': audio_message})
+
 
     #处理音频信息
     def on_audio_message(self, data):
@@ -138,7 +153,8 @@ class client:
         #         self.handle_input(message)
         # finally:
         #     self.main_sio.disconnect()
-    # 界面绑定
+    # 界面绑定.
+
 
 
 if __name__ == '__main__':
