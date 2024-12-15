@@ -1,15 +1,16 @@
 import threading
+import time
 
 import cv2
 import numpy as np
-from PyQt5 import QtCore, QtGui, QtWidgets, Qt
-
+import pyaudio
+from PyQt5 import Qt
 from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication, Qt
-from PyQt5.QtGui import QIcon, QCursor, QPixmap, QImage
+from PyQt5.QtGui import QCursor, QPixmap, QImage
 from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy, QLabel
 
-from WebRTC.MessageWindow import MessageWindow
 from WebRTC.ListWindow import ListWindow
+from WebRTC.MessageWindow import MessageWindow
 
 
 class UI_ChatRoomWindow(object):
@@ -19,7 +20,15 @@ class UI_ChatRoomWindow(object):
         self.client.ChatRoomWindow = ChatRoomWindow
 
         self.is_video = False
+
         self.is_audio = False
+        self.is_audio = False
+        self.audio_format = pyaudio.paInt16
+        self.channels = 2
+        self.rate = 44100
+        self.chunk = 1024
+        self.audio = pyaudio.PyAudio()
+        self.lock = threading.Lock()
 
         ChatRoomWindow.setObjectName("ChatRoomWindow")
         ChatRoomWindow.resize(1100, 639)
@@ -232,7 +241,7 @@ class UI_ChatRoomWindow(object):
 
     def set_button(self):
         self.Video_Button.clicked.connect(self.send_video_message)
-        # self.Audio_Button.clicked.connect(self.show_audio)
+        self.Audio_Button.clicked.connect(self.send_audio_message)
         # self.Sound_Button.clicked.connect(self.show_sound)
         self.Quit_Button.clicked.connect(self.quit_meeting)
         self.Send_Button.clicked.connect(self.send_chat_message)
@@ -243,6 +252,8 @@ class UI_ChatRoomWindow(object):
     def quit_meeting(self):
         self.client.handle_input('quit')
         self.clear_chat_message()
+        self.is_video=False
+        self.is_audio=False
 
     def show_chat_message(self, message):
         self.message_output.append(message)
@@ -282,6 +293,7 @@ class UI_ChatRoomWindow(object):
         cap = cv2.VideoCapture(0)
         while self.is_video:
             ret, frame = cap.read()
+            time.sleep(0.1)
             if not ret:
                 break
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -312,3 +324,55 @@ class UI_ChatRoomWindow(object):
     def show_video_message(self, index, video_message):
         image = self.convert_cv_qt(video_message)
         self.videoLabels[index].setPixmap(QPixmap.fromImage(image))
+
+    def send_audio_message(self):
+        if not self.is_audio:
+            self.is_audio = True
+            threading.Thread(target=self.capture_and_send_audio).start()
+        else:
+            self.is_audio = False
+
+    def capture_and_send_audio(self):
+        global stream
+        try:
+            stream = self.audio.open(format=self.audio_format,
+                                     channels=self.channels,
+                                     rate=self.rate,
+                                     input=True,
+                                     frames_per_buffer=self.chunk)
+
+            while self.is_audio:
+                audio_data = stream.read(self.chunk)
+                reduced_noise_audio_data = self.reduce_noise(audio_data)
+                # 将音频数据发送到服务器
+                self.client.send_audio_message(audio_data)
+                time.sleep(0.01)  # 降低音频捕获的帧率
+        except Exception as e:
+            print(f"Error capturing audio: {e}")
+        finally:
+            with self.lock:  # 确保线程安全
+                if self.is_audio:
+                    self.is_audio = False
+                    stream.stop_stream()
+                    stream.close()
+                    self.audio.terminate()
+                    print("Audio stream stopped and resources released.")
+
+
+    def reduce_noise(self, audio_data):
+        # 降噪过程
+        pass
+
+    def show_audio_message(self, data):
+        # 直接播放接收到的音频数据
+        if self.is_audio:
+            stream = self.audio.open(format=self.audio_format,
+                                     channels=self.channels,
+                                     rate=self.rate,
+                                     output=True)
+
+            # 播放音频数据
+
+            stream.write(data)
+            stream.stop_stream()
+            stream.close()

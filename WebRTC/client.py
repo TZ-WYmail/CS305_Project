@@ -96,8 +96,8 @@ class client:
             print(f"{data['timestamp']}:用户列表: {data['members']}")
 
     def on_chat_message(self, data):
-        print(f"{data['timestamp']}:{data['user']}: {data['message']}")
-        self.UI_ChatRoomWindow.show_chat_message('<<' + data['timestamp'] + '>>' + data['user'] + ':' + data['message'])
+        print(f"{data['timestamp']}:{data['user']}: {data['chat_message']}")
+        self.UI_ChatRoomWindow.show_chat_message('<<' + data['timestamp'] + '>>' + data['user'] + ':' + data['chat_message'])
 
     def send_chat_message(self, message):
         self.main_sio.emit('chat_message', {'room_id': self.room_id, 'chat_message': message})
@@ -115,14 +115,13 @@ class client:
     def send_video_message(self,video_message):
         self.main_sio.emit('video_message', {'room_id': self.room_id, 'video_message': video_message})
 
-    def send_audio_message(self,audio_message):
-        self.main_sio.emit('audio_message', {'room_id': self.room_id, 'audio_message': audio_message})
-
 
     #处理音频信息
     def on_audio_message(self, data):
-        print(f"{data['user']}: {data['message']}")
+        self.UI_ChatRoomWindow.show_audio_message(data['audio_message'])
 
+    def send_audio_message(self,audio_message):
+        self.main_sio.emit('audio_message', {'room_id': self.room_id, 'audio_message': audio_message})
 
     #处理输入的消息
     def handle_input(self, message):
@@ -145,7 +144,7 @@ class client:
             #其他的音频视频传输
 
     def run(self):
-        self.main_sio.connect('http://localhost:5000')
+        self.main_sio.connect('http://10.25.107.45:5000')
         threading.Thread(target=self.main_sio.wait, daemon=True).start()
         # try:
         #     while True:

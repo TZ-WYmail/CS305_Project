@@ -190,24 +190,26 @@ class Master_Server:
         print(f"用户 {sid} 发送消息: {data['chat_message']}")
         # 广播消息给所在房间的全体用户
         for user in self.rooms[data['room_id']]['users']:
-            await self.sio.emit('chat_message',
-                                {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['message']},
-                                room=user)
+            if self.rooms[data['room_id']]['users'] is not None:
+                await self.sio.emit('chat_message',
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'chat_message': data['chat_message']},
+                                    room=user)
 
     async def handle_video_message(self, sid, data):
         # 广播消息给所有用户
         for user in self.rooms[data['room_id']]['users']:
-            await self.sio.emit('video_message', {'user': sid, 'timestamp': self.get_timestamp(),
-                                                  'video_message': data['video_message']},
-                                room=user)
+            if self.rooms[data['room_id']]['users'] is not None:
+                await self.sio.emit('video_message', {'user': sid, 'timestamp': self.get_timestamp(),
+                                                      'video_message': data['video_message']},
+                                    room=user)
 
     async def handle_audio_message(self, sid, data):
-        print(f"用户 {sid} 发送音频: {data['audio_message']}")
         # 广播消息给所有用户
         for user in self.rooms[data['room_id']]['users']:
-            await self.sio.emit('audio_message',
-                                {'user': sid, 'timestamp': self.get_timestamp(), 'message': data['audio_message']},
-                                room=user)
+            if self.rooms[data['room_id']]['users'] is not None:
+                await self.sio.emit('audio_message',
+                                    {'user': sid, 'timestamp': self.get_timestamp(), 'audio_message': data['audio_message']},
+                                    room=user)
 
     '''p2p'''
 
@@ -235,7 +237,7 @@ class Master_Server:
                 for user in self.rooms[room_id]['users']:
                     await self.sio.emit('ice_candidate', data, room=user)
 
-    def run(self, host='0.0.0.0', port=5000):
+    def run(self, host='10.25.107.45', port=5000):
         web.run_app(self.app, host=host, port=5000)
 
 
