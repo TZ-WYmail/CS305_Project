@@ -2,9 +2,6 @@ import socketio
 from aiohttp import web
 import asyncio
 
-is_p2p = False
-
-
 class Master_Server:
     def __init__(self):
         # 创建异步Socket.IO服务器实例
@@ -35,10 +32,10 @@ class Master_Server:
         self.sio.on('video_message', self.handle_video_message)
         self.sio.on('audio_message', self.handle_audio_message)
 
-        #p2p事件处理
-        self.sio.on('offer', self.offer)
-        self.sio.on('answer', self.answer)
-        self.sio.on('ice_candidate', self.ice_candidate)
+        # WebRTC 信令
+        self.sio.on('offer', self.handle_offer)
+        self.sio.on('answer', self.handle_answer) 
+        self.sio.on('ice_candidate', self.handle_ice_candidate)
 
     #随机的生成一个九位数的room_id
     def generate_room_id(self):
@@ -196,6 +193,7 @@ class Master_Server:
                                     room=user)
 
     async def handle_video_message(self, sid, data):
+        print(f"[VIDEO] {sid} 发送视频消息")
         # 广播消息给所有用户
         for user in self.rooms[data['room_id']]['users']:
             if self.rooms[data['room_id']]['users'] is not None:
@@ -211,35 +209,33 @@ class Master_Server:
                                     {'user': sid, 'timestamp': self.get_timestamp(), 'audio_message': data['audio_message']},
                                     room=user)
 
-    '''p2p'''
-
-    # 处理offer
-    async def offer(self, sid, data):
-        print(f'Offer')
-        for room_id in list(self.rooms.keys()):
-            if self.rooms[room_id]['host'] == sid:
-                for user in self.rooms[room_id]['users']:
+    # WebRTC 
+    async def handle_offer(self, sid, data):
+        room_id = data['room_id']
+        if room_id in self.rooms:
+            for user in self.rooms[room_id]['users']:
+                if user != sid:
+                    print(f"[OFFER] Sending to {user}") 
                     await self.sio.emit('offer', data, room=user)
 
-    # 处理answer
-    async def answer(self, sid, data):
-        print(f"Answer")
-        for room_id in list(self.rooms.keys()):
-            if self.rooms[room_id]['host'] == sid:
-                for user in self.rooms[room_id]['users']:
+    async def handle_answer(self, sid, data):
+        room_id = data['room_id']
+        if room_id in self.rooms:
+            for user in self.rooms[room_id]['users']:
+                if user != sid:
+                    print(f"[ANSWER] Sending to {user}")
                     await self.sio.emit('answer', data, room=user)
 
-    # 处理p2p的candidate
-    async def ice_candidate(self, sid, data):
-        print(f"ICE candidate")
-        for room_id in list(self.rooms.keys()):
-            if self.rooms[room_id]['host'] == sid:
-                for user in self.rooms[room_id]['users']:
+    async def handle_ice_candidate(self, sid, data):
+        room_id = data['room_id']
+        if room_id in self.rooms:
+            for user in self.rooms[room_id]['users']:
+                if user != sid:
+                    print(f"[ICE] Sending to {user}")
                     await self.sio.emit('ice_candidate', data, room=user)
 
-    def run(self, host='10.25.107.45', port=5000):
+    def run(self, host='localhost', port=5000):
         web.run_app(self.app, host=host, port=5000)
-
 
 # 启动服务器
 if __name__ == '__main__':

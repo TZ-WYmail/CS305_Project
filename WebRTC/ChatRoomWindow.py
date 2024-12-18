@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time
 
@@ -217,12 +218,15 @@ class UI_ChatRoomWindow(object):
 
         QMetaObject.connectSlotsByName(ChatRoomWindow)
 
+        # 添加窗口关闭事件处理
+        ChatRoomWindow.closeEvent = self.handle_close
+
     # setupUi
 
     def retranslateUi(self, Room_Form):
         Room_Form.setWindowTitle(QCoreApplication.translate("Room_Form", u"Form", None))
         self.Video_Button.setText(QCoreApplication.translate("Room_Form", u"\u89c6\u9891", None))
-        self.Audio_Button.setText(QCoreApplication.translate("Room_Form", u"\u58f0\u97f3", None))
+        self.Audio_Button.setText(QCoreApplication.translate("Room_Form", u"\u58f0\u97f1", None))
         self.Sound_Button.setText(QCoreApplication.translate("Room_Form", u"\u97f3\u91cf", None))
         self.Quit_Button.setText(QCoreApplication.translate("Room_Form", u"\u9000\u51fa\u4f1a\u8bae", None))
         self.list_Button.setText(QCoreApplication.translate("Room_Form", u"\u6210\u5458", None))
@@ -242,7 +246,7 @@ class UI_ChatRoomWindow(object):
     def set_button(self):
         self.Video_Button.clicked.connect(self.send_video_message)
         self.Audio_Button.clicked.connect(self.send_audio_message)
-        # self.Sound_Button.clicked.connect(self.show_sound)
+
         self.Quit_Button.clicked.connect(self.quit_meeting)
         self.Send_Button.clicked.connect(self.send_chat_message)
         self.Clear_Button.clicked.connect(self.clear_chat_message)
@@ -285,6 +289,11 @@ class UI_ChatRoomWindow(object):
     def send_video_message(self):
         if not self.is_video:
             self.is_video = True
+            # 使用客户端的事件循环
+            asyncio.run_coroutine_threadsafe(
+                self.client.setup_peer_connection(is_initiator=True),
+                self.client.loop
+            )
             threading.Thread(target=self.capture_and_send).start()
         else:
             self.is_video = False
@@ -293,16 +302,58 @@ class UI_ChatRoomWindow(object):
         cap = cv2.VideoCapture(0)
         while self.is_video:
             ret, frame = cap.read()
-            time.sleep(0.1)
             if not ret:
                 break
+            
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             ret, jpeg = cv2.imencode('.jpg', frame)
             if ret:
-                self.client.send_video_message(jpeg.tobytes())
+                video_data = jpeg.tobytes()
+                # 尝试P2P发送
+                if not self.client.send_p2p_message('VID:', video_data):
+                    self.client.send_video_message(video_data)
+            time.sleep(0.02)
+        
         cap.release()
-        # 在线程结束后发送 black.jpg
         self.send_black_frame()
+
+    def send_audio_message(self):
+        if not self.is_audio:
+            self.is_audio = True
+            if not self.client.pc or self.client.pc.connectionState != "connected":
+                # 使用客户端的事件循环
+                asyncio.run_coroutine_threadsafe(
+                    self.client.setup_peer_connection(is_initiator=True),
+                    self.client.loop
+                )
+            threading.Thread(target=self.capture_and_send_audio).start()
+        else:
+            self.is_audio = False
+
+    def capture_and_send_audio(self):
+        global stream
+        try:
+            stream = self.audio.open(format=self.audio_format,
+                                   channels=self.channels,
+                                   rate=self.rate,
+                                   input=True,
+                                   frames_per_buffer=self.chunk)
+
+            while self.is_audio:
+                audio_data = stream.read(self.chunk)
+                if not self.client.send_p2p_message('AUD:', audio_data):
+                    self.client.send_audio_message(audio_data)
+                time.sleep(0.01)
+        except Exception as e:
+            print(f"Error capturing audio: {e}")
+        finally:
+            with self.lock:
+                if self.is_audio:
+                    self.is_audio = False
+                    stream.stop_stream()
+                    stream.close()
+                    self.audio.terminate()
+                    print("Audio stream stopped and resources released.")
 
     def send_black_frame(self):
         # 加载一张黑色的图片
@@ -325,38 +376,6 @@ class UI_ChatRoomWindow(object):
         image = self.convert_cv_qt(video_message)
         self.videoLabels[index].setPixmap(QPixmap.fromImage(image))
 
-    def send_audio_message(self):
-        if not self.is_audio:
-            self.is_audio = True
-            threading.Thread(target=self.capture_and_send_audio).start()
-        else:
-            self.is_audio = False
-
-    def capture_and_send_audio(self):
-        global stream
-        try:
-            stream = self.audio.open(format=self.audio_format,
-                                     channels=self.channels,
-                                     rate=self.rate,
-                                     input=True,
-                                     frames_per_buffer=self.chunk)
-
-            while self.is_audio:
-                audio_data = stream.read(self.chunk)
-                reduced_noise_audio_data = self.reduce_noise(audio_data)
-                # 将音频数据发送到服务器
-                self.client.send_audio_message(audio_data)
-                time.sleep(0.01)  # 降低音频捕获的帧率
-        except Exception as e:
-            print(f"Error capturing audio: {e}")
-        finally:
-            with self.lock:  # 确保线程安全
-                if self.is_audio:
-                    self.is_audio = False
-                    stream.stop_stream()
-                    stream.close()
-                    self.audio.terminate()
-                    print("Audio stream stopped and resources released.")
 
 
     def reduce_noise(self, audio_data):
@@ -366,13 +385,27 @@ class UI_ChatRoomWindow(object):
     def show_audio_message(self, data):
         # 直接播放接收到的音频数据
         if self.is_audio:
-            stream = self.audio.open(format=self.audio_format,
-                                     channels=self.channels,
-                                     rate=self.rate,
-                                     output=True)
+            stream = self.audio.open(
+                format=self.audio_format,
+                channels=self.channels,
+                rate=self.rate,
+                output=True,
+                frames_per_buffer=self.chunk
+            )
+            try:
+                stream.write(data)
+            finally:
+                stream.stop_stream()
+                stream.close()
 
-            # 播放音频数据
-
-            stream.write(data)
-            stream.stop_stream()
-            stream.close()
+    def handle_close(self, event):
+        self.is_video = False
+        self.is_audio = False
+        
+        # 关闭 P2P 连接
+        if self.client.pc:
+            self.client.pc.close()
+            self.client.pc = None
+        self.client.handle_input('quit')
+        self.clear_chat_message()
+        event.accept()
