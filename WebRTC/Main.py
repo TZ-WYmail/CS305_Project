@@ -1,13 +1,11 @@
 import asyncio
 import threading
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtWidgets
 from ChatRoomWindow import UI_ChatRoomWindow
 from Remote_meeting_room import Ui_Remote_meeting_room
 from WebRTC.client import client
-from aiortc import (RTCPeerConnection, RTCSessionDescription, 
-                   MediaStreamTrack, VideoStreamTrack, RTCIceCandidate,
-                   RTCConfiguration, RTCIceServer, AudioStreamTrack) 
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):

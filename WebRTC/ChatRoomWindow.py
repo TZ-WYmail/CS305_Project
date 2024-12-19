@@ -301,11 +301,21 @@ class UI_ChatRoomWindow(object):
         else:
             self.is_video = False
 
+    def apply_noise_gate(self, audio_data, threshold=0.01):
+        audio_data[audio_data < threshold] = 0
+        return audio_data
+
+    def adjust_gain(self, audio_data):
+        # 简单的AGC实现，根据音频数据的RMS调整增益
+        rm = np.sqrt(np.mean(audio_data ** 2))
+        self.gain = min(1.0, 1.0 / rm)
+        return audio_data * self.gain
+
     def capture_and_send(self):
         cap = cv2.VideoCapture(0)
         while self.is_video:
             ret, frame = cap.read()
-            time.sleep(0.1)
+            time.sleep(0.06)
             if not ret:
                 break
 
