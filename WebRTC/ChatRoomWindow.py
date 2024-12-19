@@ -323,7 +323,7 @@ class UI_ChatRoomWindow(object):
                 # 尝试P2P发送
                 if not self.client.send_p2p_message('VID:', video_data):
                     self.client.send_video_message(video_data)
-            time.sleep(0.02)
+            time.sleep(0.1)
 
         cap.release()
         self.send_black_frame()
