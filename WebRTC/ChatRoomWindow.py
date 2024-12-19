@@ -263,9 +263,13 @@ class UI_ChatRoomWindow(object):
         self.message_output.append(message)
 
     def send_chat_message(self):
-        message = self.message_in.toPlainText()
-        self.message_in.clear()
-        self.client.send_chat_message(message)
+        try:
+            message = self.message_in.toPlainText()
+            self.message_in.clear()
+            self.client.send_chat_message(message)
+        except Exception as e:
+            print(f"发送消息失败: {e}")
+
 
     def clear_chat_message(self):
         self.message_output.clear()

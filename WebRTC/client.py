@@ -37,12 +37,14 @@ class client:
         self.room_list = []
         self.is_in_room = False
         self.room_id = None
+        self.sid=None
 
         #房间通信事件
         self.main_sio.on('system_notification', self.on_system_notification)
         self.main_sio.on('chat_message', self.on_chat_message)
         self.main_sio.on('video_message', self.on_video_message)
         self.main_sio.on('audio_message', self.on_audio_message)
+        self.main_sio.on('change_mode' , self.on_change_mode)
 
         #成员列表
         self.refresh_member = False
@@ -68,7 +70,8 @@ class client:
 
     #处理连接消息,包括和服务器的文本传输测试
     def on_connect_message(self, data):
-        print(f"连接成功: {data['message']}")
+        print(f"连接成功: {data['user']}")
+        self.sid = data['user']
 
     #处理错误消息
     def on_error_message(self, data):
@@ -121,8 +124,8 @@ class client:
         print(f"{data['timestamp']}:{data['user']}: {data['chat_message']}")
         self.UI_ChatRoomWindow.show_chat_message('<<' + data['timestamp'] + '>>' + data['user'] + ':' + data['chat_message'])
 
-    # def send_chat_message(self, message):
-    #     self.main_sio.emit('chat_message', {'room_id': self.room_id, 'chat_message': message})
+    def send_chat_message(self, message):
+        self.main_sio.emit('chat_message', {'room_id': self.room_id, 'chat_message': message})
 
     def on_video_message(self, data):
         sid=data['user']
@@ -164,6 +167,14 @@ class client:
             # else:
             #     self.main_sio.emit('chat_message', {'room_id': self.room_id, 'message': message})
             #其他的音频视频传输
+
+    def on_change_mode(self, data):
+        print(f"Change mode: {data['mode']}")
+        if data['mode'] == 'p2p':
+            self.enable_p2p = True
+        else:
+            self.enable_p2p = False
+
 
     async def create_peer_connection(self):
         config = RTCConfiguration([
@@ -223,7 +234,7 @@ class client:
                         index = self.member_list.index(sid)
                     except ValueError:
                         index = 0  
-                    print(index,sid,msg_type)
+                    # print(index,sid,self.member_list.index(sid))
                     if msg_type == 'VID:':
                         self.UI_ChatRoomWindow.show_video_message(index, data)
                     elif msg_type == 'AUD:':
@@ -236,7 +247,8 @@ class client:
             return False
             
         try:
-            sid = self.main_sio.sid.encode()
+            print(self.main_sio.sid.encode())
+            sid = self.sid.encode()
             sid_len = len(sid).to_bytes(4, byteorder='big')
             message = sid_len + sid + self.message_separator + msg_type.encode() + self.message_separator + data
             

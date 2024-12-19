@@ -2,6 +2,7 @@ import socketio
 from aiohttp import web
 import asyncio
 
+
 class Master_Server:
     def __init__(self):
         # 创建异步Socket.IO服务器实例
@@ -34,7 +35,7 @@ class Master_Server:
 
         # WebRTC 信令
         self.sio.on('offer', self.handle_offer)
-        self.sio.on('answer', self.handle_answer) 
+        self.sio.on('answer', self.handle_answer)
         self.sio.on('ice_candidate', self.handle_ice_candidate)
 
     #随机的生成一个九位数的room_id
@@ -54,6 +55,10 @@ class Master_Server:
     #注册
     async def handle_connect(self, sid, environ):
         print(f"用户 {sid} 已连接")
+        await self.sio.emit('connect_message',
+                            {'user': sid, 'timestamp': self.get_timestamp(), 'message': '连接成功'},
+                            room=sid)
+        print('hello')
 
     async def handle_disconnect(self, sid):
         print(f"用户 {sid} 已断开连接")
@@ -123,11 +128,23 @@ class Master_Server:
                                      'room_id': room_id},
                                     room=sid)
                 #告知该房间的其他用户，这个用户加入了房间
+                #模式判断
+                mode = None
+                count = 0
+                for user in self.rooms[room_id]['users']:
+                    count += 1
+                print(count)
+                if count <= 2:
+                    mode = 'p2p'
+                else:
+                    mode = 'cs'
+
                 for user in self.rooms[room_id]['users']:
                     await self.sio.emit('system_notification',
                                         {'user': user, 'timestamp': self.get_timestamp(), 'command': 'list',
                                          'message': sid + '加入了房间', 'members': self.rooms[room_id]['users']},
                                         room=user)
+                    await self.sio.emit('change_mode', {'mode': mode}, room=user)
             else:
                 await self.sio.emit('error_message',
                                     {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
@@ -154,6 +171,15 @@ class Master_Server:
                                         {'user': sid, 'timestamp': self.get_timestamp(), 'command': 'quit',
                                          'room_id': room_id},
                                         room=sid)
+                    mode = None
+                    count = 0
+                    for user in self.rooms[room_id]['users']:
+                        count += 1
+                    print(count)
+                    if count <= 2:
+                        mode = 'p2p'
+                    else:
+                        mode = 'cs'
                     #告诉房间内的其他人退出消息
                     for user in self.rooms[room_id]['users']:
                         if user != sid:
@@ -162,6 +188,7 @@ class Master_Server:
                                                  'message': sid + ' 离开了房间',
                                                  'members': self.rooms[room_id]['users']},
                                                 room=user)
+                            await self.sio.emit('change_mode', {'mode': mode}, room=user)
             else:
                 await self.sio.emit('error_message',
                                     {'user': sid, 'timestamp': self.get_timestamp(), 'message': '房间不存在'}, room=sid)
@@ -189,7 +216,8 @@ class Master_Server:
         for user in self.rooms[data['room_id']]['users']:
             if self.rooms[data['room_id']]['users'] is not None:
                 await self.sio.emit('chat_message',
-                                    {'user': sid, 'timestamp': self.get_timestamp(), 'chat_message': data['chat_message']},
+                                    {'user': sid, 'timestamp': self.get_timestamp(),
+                                     'chat_message': data['chat_message']},
                                     room=user)
 
     async def handle_video_message(self, sid, data):
@@ -206,7 +234,8 @@ class Master_Server:
         for user in self.rooms[data['room_id']]['users']:
             if self.rooms[data['room_id']]['users'] is not None:
                 await self.sio.emit('audio_message',
-                                    {'user': sid, 'timestamp': self.get_timestamp(), 'audio_message': data['audio_message']},
+                                    {'user': sid, 'timestamp': self.get_timestamp(),
+                                     'audio_message': data['audio_message']},
                                     room=user)
 
     # WebRTC 
@@ -215,7 +244,7 @@ class Master_Server:
         if room_id in self.rooms:
             for user in self.rooms[room_id]['users']:
                 if user != sid:
-                    print(f"[OFFER] Sending to {user}") 
+                    print(f"[OFFER] Sending to {user}")
                     await self.sio.emit('offer', data, room=user)
 
     async def handle_answer(self, sid, data):
@@ -236,6 +265,7 @@ class Master_Server:
 
     def run(self, host='localhost', port=5000):
         web.run_app(self.app, host=host, port=5000)
+
 
 # 启动服务器
 if __name__ == '__main__':
