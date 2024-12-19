@@ -6,7 +6,7 @@ import threading
 from aiortc import (RTCPeerConnection, RTCSessionDescription, RTCIceCandidate,
                    RTCConfiguration, RTCIceServer)  
 
-enable_p2p = False  
+enable_p2p = False 
 
 class client:
     def __init__(self):
@@ -223,7 +223,7 @@ class client:
                         index = self.member_list.index(sid)
                     except ValueError:
                         index = 0  
-                    print(index,sid,msg_type)
+                    # print(index,sid,msg_type)
                     if msg_type == 'VID:':
                         self.UI_ChatRoomWindow.show_video_message(index, data)
                     elif msg_type == 'AUD:':
