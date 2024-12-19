@@ -9,7 +9,6 @@ from PyQt5 import Qt
 from PyQt5.QtCore import QSize, QRect, QMetaObject, QCoreApplication, Qt
 from PyQt5.QtGui import QCursor, QPixmap, QImage
 from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePolicy, QLabel
-
 from WebRTC.ListWindow import ListWindow
 from WebRTC.MessageWindow import MessageWindow
 
@@ -315,17 +314,20 @@ class UI_ChatRoomWindow(object):
         cap = cv2.VideoCapture(0)
         while self.is_video:
             ret, frame = cap.read()
-            time.sleep(0.06)
             if not ret:
                 break
 
             ret, jpeg = cv2.imencode('.jpg', frame)
             if ret:
-                self.client.send_video_message(jpeg.tobytes())
+                video_data = jpeg.tobytes()
+                # 尝试P2P发送
+                if not self.client.send_p2p_message('VID:', video_data):
+                    self.client.send_video_message(video_data)
+            time.sleep(0.02)
+
         cap.release()
-        # cv2.destroyAllWindows()
-        # 在线程结束后发送 black.jpg
         self.send_black_frame()
+
 
     def send_audio_message(self):
         if not self.is_audio:
@@ -340,19 +342,21 @@ class UI_ChatRoomWindow(object):
         else:
             self.is_audio = False
 
+
     def capture_and_send_audio(self):
         global stream
         try:
             stream = self.audio.open(format=self.audio_format,
-                                   channels=self.channels,
-                                   rate=self.rate,
-                                   input=True,
-                                   frames_per_buffer=self.chunk)
+                                     channels=self.channels,
+                                     rate=self.rate,
+                                     input=True,
+                                     frames_per_buffer=self.chunk)
 
             while self.is_audio:
                 audio_data = stream.read(self.chunk)
+                reduced_noise_audio_data = self.reduce_noise(audio_data)
                 if not self.client.send_p2p_message('AUD:', audio_data):
-                    self.client.send_audio_message(audio_data)
+                    self.client.send_audio_message(reduced_noise_audio_data)
                 time.sleep(0.01)
         except Exception as e:
             print(f"Error capturing audio: {e}")
@@ -364,7 +368,6 @@ class UI_ChatRoomWindow(object):
                     stream.close()
                     self.audio.terminate()
                     print("Audio stream stopped and resources released.")
-
     def send_black_frame(self):
         # 加载一张黑色的图片
         black_image = np.zeros((480, 640, 3), dtype=np.uint8)  # 假设图片大小为 640x480
@@ -386,58 +389,20 @@ class UI_ChatRoomWindow(object):
         image = self.convert_cv_qt(video_message)
         self.videoLabels[index].setPixmap(QPixmap.fromImage(image))
 
-    def capture_and_send_audio(self):
-        global stream
-        try:
-            stream = self.audio.open(format=self.audio_format,
-                                     channels=self.channels,
-                                     rate=self.rate,
-                                     input=True,
-                                     frames_per_buffer=self.chunk)
-
-            while self.is_audio:
-                # if not self.frame_video or not self.chat_text:  # 假设音频播放与chat_text有关
-                #     print("GUI组件不存在，暂停音频捕获。")
-                #     self.is_audio = False
-                #     break  # 退出循环，停止捕获
-                audio_data = stream.read(self.chunk)
-                reduced_noise_audio_data = self.reduce_noise(audio_data)
-                # 将音频数据发送到服务器
-                self.client.send_audio_message(reduced_noise_audio_data)##audio_data
-                time.sleep(0.01)  # 降低音频捕获的帧率
-        except Exception as e:
-            print(f"Error capturing audio: {e}")
-        finally:
-            with self.lock:  # 确保线程安全
-                if self.is_audio:
-                    self.is_audio = False
-                    stream.stop_stream()
-                    stream.close()
-                    self.audio.terminate()
-                    print("Audio stream stopped and resources released.")
-
     def reduce_noise(self, audio_data):
 
         # 设定采样率和带通滤波器的参数
         rate = self.rate  # 采样率，例如44100Hz
         lowcut = 300  # 低频截止频率，去除低于300Hz的声音
         highcut = 3400  # 高频截止频率，去除高于3400Hz的声音
-
         # 带通滤波器设计参数
         b, a = butter(N=5, Wn=[lowcut / (0.5 * rate), highcut / (0.5 * self.rate)], btype='band')
-
+        # b= self.equalizer_filter(rate, low_freq, mid_freq, high_freq, 1.5, 1.0, 0.5)
         # 对音频数据进行滤波处理
         audio_data = np.frombuffer(audio_data, dtype=np.int16)
 
         # 归一化到[-1.0, 1.0]
         audio_data = audio_data / np.iinfo(np.int16).max
-
-        # b1, a1 = butter(N=2, Wn=[lowcut / (0.5 * rate), (lowcut * 1.1) / (0.5 * rate)], btype='band')
-        # filtered_audio = filtfilt(b1, a1, audio_data)
-        #
-        # # 第二阶段滤波
-        # b2, a2 = butter(N=2, Wn=[(highcut * 0.9) / (0.5 * rate), highcut / (0.5 * rate)], btype='band')
-        # filtered_audio = filtfilt(b2, a2, filtered_audio)
 
         # 对音频数据进行滤波处理
         filtered_audio = filtfilt(b, a, audio_data)
