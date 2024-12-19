@@ -1,7 +1,7 @@
 import asyncio
 import threading
 import time
-
+from scipy.signal import butter, filtfilt
 import cv2
 import numpy as np
 import pyaudio
@@ -13,7 +13,6 @@ from PyQt5.QtWidgets import QGridLayout, QFrame, QPushButton, QTextEdit, QSizePo
 from WebRTC.ListWindow import ListWindow
 from WebRTC.MessageWindow import MessageWindow
 
-
 class UI_ChatRoomWindow(object):
     def setupUi(self, ChatRoomWindow, MainWindow):
         self.MainWindow = MainWindow
@@ -23,7 +22,7 @@ class UI_ChatRoomWindow(object):
         self.is_video = False
 
         self.is_audio = False
-        self.is_audio = False
+        self.gain = 1.0
         self.audio_format = pyaudio.paInt16
         self.channels = 2
         self.rate = 44100
@@ -306,19 +305,16 @@ class UI_ChatRoomWindow(object):
         cap = cv2.VideoCapture(0)
         while self.is_video:
             ret, frame = cap.read()
+            time.sleep(0.1)
             if not ret:
                 break
-            
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
             ret, jpeg = cv2.imencode('.jpg', frame)
             if ret:
-                video_data = jpeg.tobytes()
-                # 尝试P2P发送
-                if not self.client.send_p2p_message('VID:', video_data):
-                    self.client.send_video_message(video_data)
-            time.sleep(0.02)
-        
+                self.client.send_video_message(jpeg.tobytes())
         cap.release()
+        # cv2.destroyAllWindows()
+        # 在线程结束后发送 black.jpg
         self.send_black_frame()
 
     def send_audio_message(self):
@@ -380,11 +376,70 @@ class UI_ChatRoomWindow(object):
         image = self.convert_cv_qt(video_message)
         self.videoLabels[index].setPixmap(QPixmap.fromImage(image))
 
+    def capture_and_send_audio(self):
+        global stream
+        try:
+            stream = self.audio.open(format=self.audio_format,
+                                     channels=self.channels,
+                                     rate=self.rate,
+                                     input=True,
+                                     frames_per_buffer=self.chunk)
 
+            while self.is_audio:
+                # if not self.frame_video or not self.chat_text:  # 假设音频播放与chat_text有关
+                #     print("GUI组件不存在，暂停音频捕获。")
+                #     self.is_audio = False
+                #     break  # 退出循环，停止捕获
+                audio_data = stream.read(self.chunk)
+                reduced_noise_audio_data = self.reduce_noise(audio_data)
+                # 将音频数据发送到服务器
+                self.client.send_audio_message(reduced_noise_audio_data)##audio_data
+                time.sleep(0.01)  # 降低音频捕获的帧率
+        except Exception as e:
+            print(f"Error capturing audio: {e}")
+        finally:
+            with self.lock:  # 确保线程安全
+                if self.is_audio:
+                    self.is_audio = False
+                    stream.stop_stream()
+                    stream.close()
+                    self.audio.terminate()
+                    print("Audio stream stopped and resources released.")
 
     def reduce_noise(self, audio_data):
-        # 降噪过程
-        pass
+
+        # 设定采样率和带通滤波器的参数
+        rate = self.rate  # 采样率，例如44100Hz
+        lowcut = 300  # 低频截止频率，去除低于300Hz的声音
+        highcut = 3400  # 高频截止频率，去除高于3400Hz的声音
+
+        # 带通滤波器设计参数
+        b, a = butter(N=5, Wn=[lowcut / (0.5 * rate), highcut / (0.5 * self.rate)], btype='band')
+
+        # 对音频数据进行滤波处理
+        audio_data = np.frombuffer(audio_data, dtype=np.int16)
+
+        # 归一化到[-1.0, 1.0]
+        audio_data = audio_data / np.iinfo(np.int16).max
+
+        # b1, a1 = butter(N=2, Wn=[lowcut / (0.5 * rate), (lowcut * 1.1) / (0.5 * rate)], btype='band')
+        # filtered_audio = filtfilt(b1, a1, audio_data)
+        #
+        # # 第二阶段滤波
+        # b2, a2 = butter(N=2, Wn=[(highcut * 0.9) / (0.5 * rate), highcut / (0.5 * rate)], btype='band')
+        # filtered_audio = filtfilt(b2, a2, filtered_audio)
+
+        # 对音频数据进行滤波处理
+        filtered_audio = filtfilt(b, a, audio_data)
+        filtered_audio = self.adjust_gain(filtered_audio)  # 应用AGC
+        filtered_audio = self.apply_noise_gate(filtered_audio)  # 应用噪声门限
+        filtered_audio = filtered_audio * np.iinfo(np.int16).max
+        filtered_audio = filtered_audio.astype(np.int16)  # 转换为16位整数
+
+        # 转换为字节序列
+        audio_bytes = filtered_audio.tobytes()
+
+        return audio_bytes
 
     def show_audio_message(self, data):
         # 直接播放接收到的音频数据

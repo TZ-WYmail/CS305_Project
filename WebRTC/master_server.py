@@ -263,7 +263,7 @@ class Master_Server:
                     print(f"[ICE] Sending to {user}")
                     await self.sio.emit('ice_candidate', data, room=user)
 
-    def run(self, host='localhost', port=5000):
+    def run(self, host='10.25.107.45', port=5000):
         web.run_app(self.app, host=host, port=5000)
 
 

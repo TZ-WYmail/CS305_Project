@@ -376,7 +376,7 @@ class client:
             
         threading.Thread(target=run_event_loop, daemon=True).start()
         
-        self.main_sio.connect('http://localhost:5000')
+        self.main_sio.connect('http://10.25.107.45:5000')
         threading.Thread(target=self.main_sio.wait, daemon=True).start()
         # try:
         #     while True:
